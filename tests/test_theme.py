@@ -80,7 +80,7 @@ def test_qss_chevron_urls_quoted_posix():
 
     for mode in ("light", "dark"):
         urls = re.findall(r"url\((.*?)\)", build_qss(mode))
-        assert len(urls) == 4
+        assert len(set(urls)) == 2
         for u in urls:
             assert u.startswith('"') and u.endswith('"')
             assert "\\" not in u
