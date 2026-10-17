@@ -1,0 +1,9 @@
+.venv
+.git
+dist
+build
+packaging/out
+.superpowers
+tests
+__pycache__
+*.egg-info

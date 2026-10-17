@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Print Cost Calculator
+Comment=3D-print cost calculator
+Exec=PrintCostCalculator
+Icon=print-cost-calculator
+Categories=Utility;Office;
+Terminal=false

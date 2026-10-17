@@ -32,3 +32,4 @@ dist/
 packaging/out/
 .superpowers/
 .venv/
+.venv-build/

@@ -1,10 +1,25 @@
 """GUI entry point. Keep module-level imports minimal: startup speed matters."""
 from __future__ import annotations
 
+import os
 import sys
 import time
 
 from PySide6.QtWidgets import QApplication
+
+
+def _selftest() -> int:
+    """Packaging check: lazy imports and bundled assets are reachable."""
+    import openpyxl  # noqa: F401
+
+    import pcc.core.export_xlsx  # noqa: F401
+    from pcc.gui.icons import app_icon
+
+    if app_icon().isNull():
+        print("selftest FAILED: app icon is null", file=sys.stderr)
+        return 1
+    print("selftest ok")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("Print Cost Calculator")
     app.setOrganizationName("PrintCostCalculator")
     mark("qt")
+
+    if os.environ.get("PCC_SELFTEST"):
+        return _selftest()
 
     from pcc.gui.splash import Splash
 
@@ -49,6 +67,11 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
     splash.finish(window)
     mark("shown")
+    quit_ms = os.environ.get("PCC_EXIT_AFTER_SHOW", "")
+    if quit_ms.isdigit():
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(int(quit_ms), app.quit)
     return app.exec()
 
 
