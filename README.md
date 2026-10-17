@@ -112,7 +112,7 @@ docker run -p 8765:8765 -v pcc-data:/data \
 curl -F file=@benchy.3mf -F copies=2 -F customer="Ana" http://localhost:8765/api/v1/quote/3mf
 ```
 
-Public quotes never include cost lines, margin, the hidden fee or filament prices. Interactive docs are at `/docs`.
+Public quotes never include cost lines, margin, the hidden fee or filament prices. A JSON quote needs at least one plate, and each public plate needs print time or filament (`400 invalid_request` otherwise). Interactive docs are at `/docs`.
 Generate clients for any language from `/openapi.json`.
 
 ## 📁 Where settings live

@@ -20,6 +20,6 @@ class PlateIn(BaseModel):
 class QuoteRequest(BaseModel):
     customer: str = ""
     printer_id: str | None = None
-    plates: list[PlateIn] = Field(max_length=200)
+    plates: list[PlateIn] = Field(min_length=1, max_length=200)
     labor: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     packaging: float | None = Field(default=None, ge=0, allow_inf_nan=False)

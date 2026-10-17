@@ -197,6 +197,10 @@ def create_app(config_directory: Path | None = None) -> FastAPI:
             else settings.default_packaging
         )
         labor = body.labor if admin and body.labor is not None else settings.default_labor
+        if not admin and any(
+            p.hours == 0 and sum(u.grams for u in p.filaments) == 0 for p in body.plates
+        ):  # a zero plate prices only the fixed fees: don't let the public probe them
+            raise ApiError(400, "invalid_request", "Each plate needs print time or filament")
         job = new_job(printer_id, packaging, body.customer)
         job.plates = [
             Plate(

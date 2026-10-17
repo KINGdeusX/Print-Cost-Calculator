@@ -298,3 +298,29 @@ def test_admin_put_catalog_rejects_invalid_values(admin_client):
     assert admin_client.put("/api/v1/admin/catalog", json=bad, headers=AUTH).status_code == 400
     assert admin_client.get("/api/v1/admin/catalog", headers=AUTH).json() == cat
     assert admin_client.post(Q, json=BODY).status_code == 200
+
+
+def test_quote_requires_a_plate(client, admin_client):
+    for c, h in ((client, {}), (admin_client, AUTH)):
+        r = c.post(Q, json={**BODY, "plates": []}, headers=h)
+        assert r.status_code == 422 and r.json()["error"]["code"] == "invalid_request"
+
+
+def test_public_quote_rejects_empty_plates(client):
+    empty = {"name": "probe", "hours": 0, "copies": 1,
+             "filaments": [{"filament_id": "pla", "grams": 0}]}
+    for plates in ([empty], [BODY["plates"][0], {**empty, "filaments": []}]):
+        r = client.post(Q, json={**BODY, "plates": plates})
+        assert r.status_code == 400
+        assert r.json()["error"] == {"code": "invalid_request",
+                                     "message": "Each plate needs print time or filament"}
+    # time only or filament only is fine
+    assert client.post(Q, json={**BODY, "plates": [{**empty, "hours": 1}]}).status_code == 200
+    ok = {**empty, "filaments": [{"filament_id": "pla", "grams": 1}]}
+    assert client.post(Q, json={**BODY, "plates": [ok]}).status_code == 200
+
+
+def test_admin_quote_allows_empty_plates(admin_client):
+    empty = {"name": "probe", "hours": 0, "copies": 1, "filaments": []}
+    r = admin_client.post(Q, json={**BODY, "plates": [empty]}, headers=AUTH)
+    assert r.status_code == 200
