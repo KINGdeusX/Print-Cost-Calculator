@@ -59,3 +59,18 @@ def test_license_and_docs_present():
     assert "MIT License" in (ROOT / "LICENSE").read_text()
     assert "## 0.2.0 \u2014 2026-10-17" in (ROOT / "CHANGELOG.md").read_text()
     assert "/openapi.json" in (ROOT / "README.md").read_text()
+
+
+def test_release_linux_checks_xcb_plugin():
+    rel = (ROOT / ".github/workflows/release.yml").read_text()
+    linux = rel.split("\n  linux:")[1].split("\n  python:")[0]
+    assert "skip_missing_names_on_install" not in linux
+    assert "epel-release" in linux and "powertools" in linux
+    assert "xorg-x11-server-Xvfb" in linux
+    assert "ldd dist/PrintCostCalculator/_internal/PySide6/Qt/plugins/platforms/libqxcb.so" in linux
+    assert 'grep "not found"' in linux and "exit 1" in linux
+    assert "xvfb-run -a env QT_QPA_PLATFORM=xcb PCC_EXIT_AFTER_SHOW=1500" in linux
+    # every step that relies on pipefail runs under an explicit bash shell
+    for step in linux.split("      - ")[1:]:
+        if "pipefail" in step or " | " in step:
+            assert "shell: bash" in step, step

@@ -38,19 +38,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install system libraries
+        shell: bash
         run: |
           dnf install -y epel-release || true
           dnf config-manager --set-enabled powertools || true
-          dnf install -y --setopt=skip_missing_names_on_install=True libxkbcommon-x11 xcb-util-cursor xcb-util-wm xcb-util-keysyms \
-            xcb-util-image xcb-util-renderutil mesa-libGL mesa-libEGL fontconfig dbus-libs file
+          dnf install -y libxkbcommon-x11 xcb-util-cursor xcb-util-wm xcb-util-keysyms \
+            xcb-util-image xcb-util-renderutil mesa-libGL mesa-libEGL fontconfig dbus-libs file \
+            xorg-x11-server-Xvfb xorg-x11-xauth
       - name: Create venv
+        shell: bash
         run: |
           /opt/python/cp312-cp312/bin/python -m venv .venv
           .venv/bin/pip install -U pip
           .venv/bin/pip install ".[gui,dev]"
       - name: Build
+        shell: bash
         run: PYTHON=.venv/bin/python bash packaging/build_linux.sh
+      - name: Check xcb platform plugin dependencies
+        shell: bash
+        run: |
+          deps=$(ldd dist/PrintCostCalculator/_internal/PySide6/Qt/plugins/platforms/libqxcb.so)
+          echo "$deps"
+          if grep "not found" <<<"$deps"; then
+            echo "libqxcb.so has unresolved dependencies" >&2
+            exit 1
+          fi
       - name: Frozen self-test
+        shell: bash
         env:
           PCC_SELFTEST: "1"
           QT_QPA_PLATFORM: offscreen
@@ -58,6 +72,9 @@ jobs:
           set -o pipefail
           dist/PrintCostCalculator/PrintCostCalculator | tee selftest.out
           grep -q "selftest ok" selftest.out
+      - name: Frozen GUI smoke test (xcb under Xvfb)
+        shell: bash
+        run: xvfb-run -a env QT_QPA_PLATFORM=xcb PCC_EXIT_AFTER_SHOW=1500 dist/PrintCostCalculator/PrintCostCalculator
       - uses: actions/upload-artifact@v4
         with:
           name: linux
