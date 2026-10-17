@@ -33,7 +33,7 @@ def test_export_new_then_append_last(qtbot, cfg_dir, tmp_path, monkeypatch):
     assert not flow.last_action.isEnabled()
     p = tmp_path / "r.xlsx"
     assert flow.export(p, append=False) is True
-    assert state.settings.last_export_path == str(p)
+    assert Path(state.settings.last_export_path) == p
     assert w.toast.label.text() == "✅ Saved to r.xlsx"
     flow.menu().aboutToShow.emit()
     assert flow.last_action.isEnabled()
@@ -44,9 +44,9 @@ def test_export_new_then_append_last(qtbot, cfg_dir, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QPushButton
     btns = {b.text(): b for b in w.toast.findChildren(QPushButton)}
     btns["Open file"].click()
-    assert opened == [str(p)]
+    assert [Path(o) for o in opened] == [p]
     btns["Open folder"].click()
-    assert opened == [str(p), str(p.parent)]
+    assert [Path(o) for o in opened] == [p, p.parent]
 
 
 def test_permission_error_retry(qtbot, cfg_dir, tmp_path, monkeypatch):
@@ -85,7 +85,7 @@ def test_permission_error_cancel(qtbot, cfg_dir, tmp_path, monkeypatch):
 def test_invalid_workbook_critical(qtbot, cfg_dir, tmp_path, monkeypatch):
     state, w = make(qtbot)
     bad = tmp_path / "bad.xlsx"
-    bad.write_text("not a zip")
+    bad.write_text("not a zip", encoding="utf-8")
     msgs = []
     monkeypatch.setattr(QMessageBox, "critical", lambda p, t, m: msgs.append(m))
     assert w.summary.export_flow.export(bad, True) is False
@@ -167,11 +167,11 @@ def _overwrite_setup(qtbot, tmp_path, monkeypatch, answer):
         return answer
 
     monkeypatch.setattr(QMessageBox, "question", question)
-    return flow, target, asked
+    return w, flow, target, asked
 
 
 def test_new_report_confirms_overwrite_of_suffixed_path(qtbot, cfg_dir, tmp_path, monkeypatch):
-    flow, target, asked = _overwrite_setup(
+    w, flow, target, asked = _overwrite_setup(
         qtbot, tmp_path, monkeypatch, QMessageBox.StandardButton.No)
     assert flow.new_report() is False
     assert target.read_bytes() == b"precious"
@@ -179,7 +179,7 @@ def test_new_report_confirms_overwrite_of_suffixed_path(qtbot, cfg_dir, tmp_path
 
 
 def test_new_report_overwrite_confirmed(qtbot, cfg_dir, tmp_path, monkeypatch):
-    flow, target, asked = _overwrite_setup(
+    w, flow, target, asked = _overwrite_setup(
         qtbot, tmp_path, monkeypatch, QMessageBox.StandardButton.Yes)
     assert flow.new_report() is True
     assert openpyxl.load_workbook(target)["Jobs"].max_row == 2

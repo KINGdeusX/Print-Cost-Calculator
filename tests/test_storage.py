@@ -48,7 +48,7 @@ def test_round_trip(cfg_dir):
 
 def test_corrupt_settings_backed_up(cfg_dir):
     cfg_dir.mkdir()
-    (cfg_dir / "settings.json").write_text("{")
+    (cfg_dir / "settings.json").write_text("{", encoding="utf-8")
     r = load_state(legacy_paths=[])
     assert r.settings == default_settings()
     assert len(list(cfg_dir.glob("settings.json.bak-*"))) == 1
@@ -59,7 +59,7 @@ def test_corrupt_settings_backed_up(cfg_dir):
 
 def test_malformed_entry_treated_as_corrupt(cfg_dir):
     cfg_dir.mkdir()
-    (cfg_dir / "catalog.json").write_text(json.dumps({"printers": [{"name": "x"}]}))
+    (cfg_dir / "catalog.json").write_text(json.dumps({"printers": [{"name": "x"}]}), encoding="utf-8")
     r = load_state(legacy_paths=[])
     assert len(list(cfg_dir.glob("catalog.json.bak-*"))) == 1
     assert r.catalog.printer("custom") is not None
@@ -70,7 +70,7 @@ def test_malformed_entry_treated_as_corrupt(cfg_dir):
 
 def test_non_object_json_is_corrupt(cfg_dir):
     cfg_dir.mkdir()
-    (cfg_dir / "settings.json").write_text("[]")
+    (cfg_dir / "settings.json").write_text("[]", encoding="utf-8")
     r = load_state(legacy_paths=[])
     assert len(list(cfg_dir.glob("settings.json.bak-*"))) == 1
     assert len(r.warnings) == 1
@@ -80,7 +80,7 @@ def test_migrate_v01(cfg_dir, tmp_path):
     legacy = tmp_path / "pricing_config.json"
     legacy.write_text(json.dumps(
         {"filament_cost": 900, "packaging": 15, "rate": 11, "power": 200, "margin": 40}
-    ))
+    ), encoding="utf-8")
     r = load_state(legacy_paths=[legacy])
     assert r.warnings == ["Imported settings from v0.1"]
     assert r.settings.default_packaging == 15
@@ -98,7 +98,7 @@ def test_migrate_v01(cfg_dir, tmp_path):
 
 def test_migrate_ignores_non_numeric_values(cfg_dir, tmp_path):
     legacy = tmp_path / "pricing_config.json"
-    legacy.write_text(json.dumps({"margin": "lots", "rate": 9, "power": None}))
+    legacy.write_text(json.dumps({"margin": "lots", "rate": 9, "power": None}), encoding="utf-8")
     r = load_state(legacy_paths=[legacy])
     assert r.settings.margin_pct == 50 and r.settings.electricity_rate == 9
     assert r.catalog.printers[0].id != "my-printer"
@@ -106,7 +106,7 @@ def test_migrate_ignores_non_numeric_values(cfg_dir, tmp_path):
 
 def test_migrate_empty_legacy_file(cfg_dir, tmp_path):
     legacy = tmp_path / "pricing_config.json"
-    legacy.write_text("")
+    legacy.write_text("", encoding="utf-8")
     r = load_state(legacy_paths=[legacy])
     assert r.settings.margin_pct == 50 and r.warnings == []
 
@@ -114,7 +114,7 @@ def test_migrate_empty_legacy_file(cfg_dir, tmp_path):
 def test_migrate_invalid_or_non_object_legacy(cfg_dir, tmp_path):
     for text in ("{", "[1]"):
         legacy = tmp_path / "pricing_config.json"
-        legacy.write_text(text)
+        legacy.write_text(text, encoding="utf-8")
         r = load_state(legacy_paths=[legacy])
         assert r.warnings == [] and r.settings.margin_pct == 50
 
@@ -129,7 +129,7 @@ def test_atomic_write_leaves_no_temp(cfg_dir):
 def test_missing_filaments_filled_from_defaults(cfg_dir):
     cfg_dir.mkdir()
     (cfg_dir / "catalog.json").write_text(
-        json.dumps({"printers": [{"id": "x", "name": "X", "watts": 100}]}))
+        json.dumps({"printers": [{"id": "x", "name": "X", "watts": 100}]}), encoding="utf-8")
     r = load_state(legacy_paths=[])
     assert [p.id for p in r.catalog.printers] == ["x"]
     assert len(r.catalog.filaments) == 6
@@ -139,7 +139,7 @@ def test_missing_filaments_filled_from_defaults(cfg_dir):
 def test_empty_printers_filled_from_defaults(cfg_dir):
     cfg_dir.mkdir()
     fil = {"id": "mine", "name": "Mine", "type": "PLA", "price_per_kg": 1.0}
-    (cfg_dir / "catalog.json").write_text(json.dumps({"printers": [], "filaments": [fil]}))
+    (cfg_dir / "catalog.json").write_text(json.dumps({"printers": [], "filaments": [fil]}), encoding="utf-8")
     r = load_state(legacy_paths=[])
     assert len(r.catalog.printers) == 15
     assert [f.id for f in r.catalog.filaments] == ["mine"]
@@ -150,7 +150,7 @@ def test_no_migration_when_catalog_exists(cfg_dir, tmp_path):
     cfg_dir.mkdir()
     save_catalog(default_catalog(123.0), cfg_dir)
     legacy = tmp_path / "pricing_config.json"
-    legacy.write_text(json.dumps({"margin": 40, "power": 200}))
+    legacy.write_text(json.dumps({"margin": 40, "power": 200}), encoding="utf-8")
     r = load_state(legacy_paths=[legacy])
     assert r.warnings == [] and r.settings.margin_pct == 50
     assert r.catalog.default_filament().price_per_kg == 123.0
@@ -158,7 +158,7 @@ def test_no_migration_when_catalog_exists(cfg_dir, tmp_path):
 
 def test_migrate_rejects_non_finite_and_non_positive(cfg_dir, tmp_path):
     legacy = tmp_path / "pricing_config.json"
-    legacy.write_text('{"filament_cost": 0, "power": -5, "margin": Infinity, "rate": NaN, "packaging": 7}')
+    legacy.write_text('{"filament_cost": 0, "power": -5, "margin": Infinity, "rate": NaN, "packaging": 7}', encoding="utf-8")
     r = load_state(legacy_paths=[legacy])
     assert r.catalog.default_filament().price_per_kg == 800.0
     assert r.catalog.printers[0].id != "my-printer"
@@ -168,10 +168,10 @@ def test_migrate_rejects_non_finite_and_non_positive(cfg_dir, tmp_path):
 
 def test_invalid_values_on_disk_load_defaults(cfg_dir):
     cfg_dir.mkdir()
-    (cfg_dir / "settings.json").write_text(json.dumps({"margin_pct": "50", "rounding_step": None}))
+    (cfg_dir / "settings.json").write_text(json.dumps({"margin_pct": "50", "rounding_step": None}), encoding="utf-8")
     (cfg_dir / "catalog.json").write_text(json.dumps({
         "printers": [{"id": "x", "name": "X", "watts": "lots"}],
-        "filaments": [{"id": "f", "name": "F", "type": "PLA", "price_per_kg": -1}]}))
+        "filaments": [{"id": "f", "name": "F", "type": "PLA", "price_per_kg": -1}]}), encoding="utf-8")
     r = load_state(legacy_paths=[])
     assert r.settings == default_settings()
     assert len(r.catalog.printers) == 15 and len(r.catalog.filaments) == 6

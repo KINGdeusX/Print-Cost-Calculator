@@ -38,14 +38,14 @@ def test_quote_export_append(cfg_dir, tmp_path, capsys):
 
 def test_export_to_invalid_workbook_exit_3(cfg_dir, tmp_path, capsys):
     r = tmp_path / "r.xlsx"
-    r.write_text("not a workbook")
+    r.write_text("not a workbook", encoding="utf-8")
     assert main(["quote", str(_file(tmp_path)), "--export", str(r), "--append"]) == 3
     assert "error: Could not write report:" in capsys.readouterr().err
 
 
 def test_bad_file_exit_3(cfg_dir, tmp_path, capsys):
     f = tmp_path / "bad.3mf"
-    f.write_text("nope")
+    f.write_text("nope", encoding="utf-8")
     assert main(["quote", str(f)]) == 3
     assert "Not a valid .3mf file." in capsys.readouterr().err
 

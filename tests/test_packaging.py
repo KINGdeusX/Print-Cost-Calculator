@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_spec_excludes_heavy_modules():
-    s = (ROOT / "packaging/pcc.spec").read_text()
+    s = (ROOT / "packaging/pcc.spec").read_text(encoding="utf-8")
     for m in ("QtWebEngineCore", "QtWebEngineWidgets", "QtQml", "QtQuick", "QtMultimedia",
               "QtPdf", "QtCharts", "tkinter", "fastapi", "uvicorn", "pydantic"):
         assert f'"{m}"' in s or f'"PySide6.{m}"' in s
@@ -19,23 +19,23 @@ def test_spec_excludes_heavy_modules():
 
 
 def test_desktop_file():
-    d = (ROOT / "packaging/pcc.desktop").read_text()
+    d = (ROOT / "packaging/pcc.desktop").read_text(encoding="utf-8")
     for line in ("Name=Print Cost Calculator", "Exec=PrintCostCalculator",
                  "Icon=print-cost-calculator", "Categories=Utility;Office;"):
         assert line in d
 
 
 def test_scripts_and_docker_present():
-    assert "set -euo pipefail" in (ROOT / "packaging/build_linux.sh").read_text()
-    assert "Compress-Archive" in (ROOT / "packaging/build_windows.ps1").read_text()
-    assert (ROOT / "packaging/AppRun").read_text().startswith("#!/usr/bin/env bash")
-    df = (ROOT / "Dockerfile").read_text()
+    assert "set -euo pipefail" in (ROOT / "packaging/build_linux.sh").read_text(encoding="utf-8")
+    assert "Compress-Archive" in (ROOT / "packaging/build_windows.ps1").read_text(encoding="utf-8")
+    assert (ROOT / "packaging/AppRun").read_text(encoding="utf-8").startswith("#!/usr/bin/env bash")
+    df = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "python:3.12-slim" in df and "EXPOSE 8765" in df and "PCC_CONFIG_DIR=/data" in df
-    assert ".venv" in (ROOT / ".dockerignore").read_text()
+    assert ".venv" in (ROOT / ".dockerignore").read_text(encoding="utf-8")
 
 
 def test_version_is_readable():
-    assert re.search(r'__version__\s*=\s*"[^"]+"', (ROOT / "pcc/__init__.py").read_text())
+    assert re.search(r'__version__\s*=\s*"[^"]+"', (ROOT / "pcc/__init__.py").read_text(encoding="utf-8"))
     assert pcc.__version__
 
 
@@ -48,21 +48,21 @@ def test_selftest_runs_unfrozen(qapp, capsys, monkeypatch):
 
 
 def test_workflows_present():
-    ci = (ROOT / ".github/workflows/ci.yml").read_text()
-    rel = (ROOT / ".github/workflows/release.yml").read_text()
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    rel = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch" in ci and "QT_QPA_PLATFORM" in ci
     assert "manylinux_2_28" in rel and "tags:" in rel
     assert "softprops/action-gh-release@v2" in rel
 
 
 def test_license_and_docs_present():
-    assert "MIT License" in (ROOT / "LICENSE").read_text()
-    assert "## 0.2.0 \u2014 2026-10-17" in (ROOT / "CHANGELOG.md").read_text()
-    assert "/openapi.json" in (ROOT / "README.md").read_text()
+    assert "MIT License" in (ROOT / "LICENSE").read_text(encoding="utf-8")
+    assert "## 0.2.0 \u2014 2026-10-17" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "/openapi.json" in (ROOT / "README.md").read_text(encoding="utf-8")
 
 
 def test_release_linux_checks_xcb_plugin():
-    rel = (ROOT / ".github/workflows/release.yml").read_text()
+    rel = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     linux = rel.split("\n  linux:")[1].split("\n  python:")[0]
     assert "skip_missing_names_on_install" not in linux
     assert "epel-release" in linux and "powertools" in linux
@@ -77,7 +77,7 @@ def test_release_linux_checks_xcb_plugin():
 
 
 def test_docker_runs_as_non_root():
-    df = (ROOT / "Dockerfile").read_text()
+    df = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     lines = [ln.strip() for ln in df.splitlines()]
     assert "useradd" in df and "chown" in df and "/data" in df
     user = lines.index("USER pcc")

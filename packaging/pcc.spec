@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(SPECPATH).resolve().parent  # noqa: F821  (SPECPATH injected by PyInstaller)
 VERSION = re.search(
-    r'__version__\s*=\s*"([^"]+)"', (ROOT / "pcc" / "__init__.py").read_text()
+    r'__version__\s*=\s*"([^"]+)"', (ROOT / "pcc" / "__init__.py").read_text(encoding="utf-8")
 ).group(1)
 
 EXCLUDES = [
