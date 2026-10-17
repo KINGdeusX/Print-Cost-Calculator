@@ -2,18 +2,25 @@
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 
 from PySide6.QtCore import QByteArray, Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog, QLabel,
-    QMainWindow, QSplitter, QToolButton, QVBoxLayout, QWidget,
+    QFileDialog, QMainWindow, QMessageBox, QSplitter, QToolButton, QVBoxLayout, QWidget,
 )
 
 from pcc.core.currency import CURRENCIES
 from pcc.gui.icons import app_icon, icon
 from pcc.gui.state import AppState
 from pcc.gui.theme import apply_theme, current_mode, resolve_mode
+from pcc.gui.widgets.banner import Banner
+from pcc.gui.widgets.drop_overlay import DropOverlay
+from pcc.gui.widgets.job_panel import JobPanel
+from pcc.gui.widgets.plates_view import PlatesView
+from pcc.gui.widgets.summary_panel import SummaryPanel
+from pcc.gui.widgets.toast import Toast
 
 COMPACT_WIDTH = 1000
 _THEMES = ("system", "light", "dark")
@@ -44,11 +51,26 @@ class MainWindow(QMainWindow):
         col.setContentsMargins(12, 12, 12, 12)
         col.setSpacing(12)
         col.addWidget(self._build_top_bar())
+        self.banner = Banner()
+        col.addWidget(self.banner)
         self._build_splitters()
         col.addWidget(self._wide, 1)
         col.addWidget(self._narrow, 1)
         self.setCentralWidget(root)
         self._apply_layout(False)
+
+        self.job_panel = JobPanel(state)
+        self.plates_view = PlatesView(state)
+        self.summary = SummaryPanel(state)
+        self.job_area.layout().addWidget(self.job_panel)
+        self.plates_area.layout().addWidget(self.plates_view)
+        self.summary_area.layout().addWidget(self.summary)
+        self.plates_view.import_requested.connect(self.import_dialog)
+        self.toast = Toast(root)
+        self.drop_overlay = DropOverlay(root)
+        self.setAcceptDrops(True)
+        QShortcut(QKeySequence.StandardKey.Open, self, activated=self.import_dialog)
+        QShortcut(QKeySequence.StandardKey.New, self, activated=self.new_job)
 
         self._refresh_printers()
         self._refresh_currency()
@@ -216,7 +238,62 @@ class MainWindow(QMainWindow):
 
     # -- warnings -----------------------------------------------------
     def show_warnings(self, lines: list[str]) -> None:
-        self.statusBar().showMessage("; ".join(lines))
+        self.banner.show_messages("warning", lines)
+
+    # -- import / new job ---------------------------------------------
+    def import_dialog(self) -> None:
+        names, _ = QFileDialog.getOpenFileNames(
+            self, "Import sliced files", "", "Sliced 3MF (*.3mf)")
+        if names:
+            self.import_files([Path(n) for n in names])
+
+    def import_files(self, paths: list[Path]) -> None:
+        before = len(self.state.job.plates)
+        failures = self.state.import_files([Path(p) for p in paths])
+        added = len(self.state.job.plates) - before
+        if failures:
+            level = "danger" if len(failures) == len(paths) else "warning"
+            self.banner.show_messages(level, [f"{n}: {r}" for n, r in failures])
+        if added > 0:
+            self.toast.show_toast(f"✅ Imported {added} plate(s)")
+
+    def new_job(self) -> None:
+        if self.state.job.plates:
+            ok = QMessageBox.question(
+                self, "New job", "Start a new job? Current plates will be cleared.")
+            if ok != QMessageBox.StandardButton.Yes:
+                return
+        self.state.new_job()
+
+    # -- drag and drop --------------------------------------------------
+    @staticmethod
+    def _dropped_3mf(mime) -> list[Path]:
+        out = []
+        for url in mime.urls():
+            if url.isLocalFile() and url.toLocalFile().lower().endswith(".3mf"):
+                out.append(Path(url.toLocalFile()))
+        return out
+
+    def dragEnterEvent(self, event) -> None:
+        if self._dropped_3mf(event.mimeData()):
+            event.acceptProposedAction()
+            self.drop_overlay.show_overlay()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        if self._dropped_3mf(event.mimeData()):
+            event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event) -> None:
+        self.drop_overlay.hide()
+
+    def dropEvent(self, event) -> None:
+        self.drop_overlay.hide()
+        paths = self._dropped_3mf(event.mimeData())
+        if paths:
+            event.acceptProposedAction()
+            self.import_files(paths)
 
     # -- geometry -----------------------------------------------------
     def _restore_geometry(self) -> None:

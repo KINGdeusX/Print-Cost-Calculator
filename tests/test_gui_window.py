@@ -90,22 +90,24 @@ def test_compact_layout(qtbot, cfg_dir):
     assert w.summary_area.parent() is not w.plates_area.parent()
 
 
-def test_warning_shown_in_status_bar(qtbot, cfg_dir):
+def test_warning_shown_in_banner(qtbot, cfg_dir):
     state, w = make(qtbot)
+    w.show()
     state.warning.emit("careful")
-    assert "careful" in w.statusBar().currentMessage()
+    assert w.banner.isVisible()
+    assert "careful" in w.banner.label.text()
 
 
 def test_geometry_saved_on_close(qtbot, cfg_dir):
     state, w = make(qtbot)
     w.show()
-    w.resize(700, 500)
+    w.resize(760, 600)
     w.close()
     assert state.settings.window_geometry
     base64.b64decode(state.settings.window_geometry)
     state2, w2 = make(qtbot)
     w2.show()
-    assert w2.size().width() == 700
+    assert w2.size().width() == 760
 
 
 def test_main_timing_smoke(capsys, cfg_dir, monkeypatch):
