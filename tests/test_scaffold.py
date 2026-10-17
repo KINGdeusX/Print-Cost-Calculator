@@ -10,7 +10,6 @@ def test_version():
     assert pcc.__version__ == "0.2.0"
 
 
-@pytest.mark.xfail(strict=False, reason="core modules and cli arrive by Task 8")
 def test_core_and_cli_are_framework_free():
     code = ("import sys, pcc.core.models, pcc.core.pricing, pcc.core.serialize, "
             "pcc.core.storage, pcc.core.threemf, pcc.core.matching, pcc.core.export_xlsx, pcc.cli;"
