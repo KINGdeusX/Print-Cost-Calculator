@@ -79,3 +79,96 @@ def test_locked_file_raises(tmp_path, job, quote, catalog, monkeypatch):
     monkeypatch.setattr(openpyxl.Workbook, "save", boom)
     with pytest.raises(PermissionError):
         export_quote(tmp_path / "l.xlsx", job, quote, catalog, append=False)
+
+
+def test_text_cells_never_formulas(tmp_path, job, quote, catalog):
+    job.customer = '=HYPERLINK("http://evil","x")'
+    job.plates[0].name = "=1+1"
+    job.plates[0].source_file = "=cmd|' /C calc'!A0"
+    catalog.printers[0].name = "@SUM(1)"
+    from pcc.core.pricing import compute_quote
+    from pcc.core.models import Settings
+    q = compute_quote(job, Settings(), catalog)
+    out = export_quote(tmp_path / "f.xlsx", job, q, catalog, append=False)
+    wb = openpyxl.load_workbook(out)
+    jobs, plates = wb["Jobs"], wb["Plates"]
+    assert jobs["C2"].data_type == "s"
+    assert jobs["C2"].value == '=HYPERLINK("http://evil","x")'
+    assert jobs["D2"].data_type == "s" and jobs["D2"].value == "@SUM(1)"
+    assert plates["C2"].data_type == "s" and plates["C2"].value == "=1+1"
+    assert plates["D2"].data_type == "s" and plates["D2"].value == "=cmd|' /C calc'!A0"
+
+
+def test_failed_save_keeps_original_intact(tmp_path, job, quote, catalog, monkeypatch):
+    path = tmp_path / "keep.xlsx"
+    export_quote(path, job, quote, catalog, append=False)
+    before = path.read_bytes()
+
+    def crash(self, filename):
+        with open(filename, "wb") as fh:
+            fh.write(b"partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(openpyxl.Workbook, "save", crash)
+    with pytest.raises(OSError):
+        export_quote(path, job, quote, catalog, append=True)
+    assert path.read_bytes() == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["keep.xlsx"]
+
+
+def test_locked_target_propagates_and_cleans_temp(tmp_path, job, quote, catalog, monkeypatch):
+    import os
+    path = tmp_path / "lock.xlsx"
+    export_quote(path, job, quote, catalog, append=False)
+    before = path.read_bytes()
+
+    def locked(src, dst):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(os, "replace", locked)
+    with pytest.raises(PermissionError):
+        export_quote(path, job, quote, catalog, append=True)
+    assert path.read_bytes() == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["lock.xlsx"]
+
+
+def test_foreign_workbook_backed_up_once(tmp_path, job, quote, catalog):
+    path = tmp_path / "mine.xlsx"
+    wb = openpyxl.Workbook()
+    wb.active.append(["my", "data"])
+    wb.save(path)
+    original = path.read_bytes()
+    export_quote(path, job, quote, catalog, append=True)
+    bak = tmp_path / "mine.bak.xlsx"
+    assert bak.read_bytes() == original
+    # Appending again: it is a pcc workbook now and the backup is never overwritten.
+    bak.write_bytes(b"sentinel")
+    export_quote(path, job, quote, catalog, append=True)
+    assert bak.read_bytes() == b"sentinel"
+
+
+def test_foreign_backup_not_overwritten(tmp_path, job, quote, catalog):
+    path = tmp_path / "f2.xlsx"
+    openpyxl.Workbook().save(path)
+    (tmp_path / "f2.bak.xlsx").write_bytes(b"older backup")
+    export_quote(path, job, quote, catalog, append=True)
+    assert (tmp_path / "f2.bak.xlsx").read_bytes() == b"older backup"
+
+
+def test_pcc_workbook_not_backed_up(tmp_path, job, quote, catalog):
+    path = tmp_path / "p.xlsx"
+    export_quote(path, job, quote, catalog, append=False)
+    export_quote(path, job, quote, catalog, append=True)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["p.xlsx"]
+
+
+@pytest.mark.skipif(__import__("sys").platform == "win32", reason="POSIX modes")
+def test_atomic_save_keeps_file_mode(tmp_path, job, quote, catalog):
+    import os
+    import stat
+    path = tmp_path / "m.xlsx"
+    export_quote(path, job, quote, catalog, append=False)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o644
+    os.chmod(path, 0o664)
+    export_quote(path, job, quote, catalog, append=True)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o664

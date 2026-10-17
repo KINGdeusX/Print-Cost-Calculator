@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 from pathlib import Path
 
 from pcc.core.currency import excel_money_format
@@ -63,6 +66,32 @@ def _fit_widths(ws) -> None:
         ws.column_dimensions[get_column_letter(col[0].column)].width = min(longest + 2, 50)
 
 
+def _as_text(row) -> None:
+    # openpyxl turns "=..." strings into formulas; user text must stay text.
+    for c in row:
+        if isinstance(c.value, str):
+            c.data_type = "s"
+
+
+def _save_atomic(wb, path: Path) -> None:
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".xlsx.tmp", dir=path.parent)
+    os.close(fd)
+    try:
+        wb.save(tmp)
+        # mkstemp creates 0600; keep the existing file's mode (or a normal 0644).
+        if path.exists():
+            shutil.copymode(path, tmp)
+        else:
+            os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def export_quote(path: Path, job: Job, quote: Quote, catalog: Catalog, append: bool) -> Path:
     import openpyxl
 
@@ -70,6 +99,10 @@ def export_quote(path: Path, job: Job, quote: Quote, catalog: Catalog, append: b
     if path.suffix.lower() != ".xlsx":
         path = path.with_name(path.name + ".xlsx")
     wb = openpyxl.load_workbook(path) if append and path.exists() else openpyxl.Workbook()
+    if append and path.exists() and "Jobs" not in wb.sheetnames:
+        bak = path.with_name(path.stem + ".bak.xlsx")
+        if not bak.exists():
+            shutil.copy2(path, bak)
     if wb.sheetnames == ["Sheet"]:
         del wb["Sheet"]
     _prepare(wb)
@@ -86,6 +119,7 @@ def export_quote(path: Path, job: Job, quote: Quote, catalog: Catalog, append: b
         quote.lines.labor, quote.packaging, quote.job_cost, quote.markup, quote.price,
     ])
     r = jobs.max_row
+    _as_text(jobs[r])
     jobs.cell(r, 2).number_format = _DATE_FORMAT
     for c in _JOBS_MONEY:
         jobs.cell(r, c).number_format = fmt
@@ -101,10 +135,11 @@ def export_quote(path: Path, job: Job, quote: Quote, catalog: Catalog, append: b
             round(b.hours, 2), round(b.grams, 1), "; ".join(parts),
             s.filament, s.electricity, s.failure, s.labor, b.cost_total, b.price_total,
         ])
+        _as_text(plates[plates.max_row])
         for c in _PLATES_MONEY:
             plates.cell(plates.max_row, c).number_format = fmt
 
     for ws in (jobs, plates):
         _fit_widths(ws)
-    wb.save(path)
+    _save_atomic(wb, path)
     return path
