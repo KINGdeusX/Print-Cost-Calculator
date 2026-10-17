@@ -29,3 +29,6 @@ pcc = ["assets/**/*"]
 [tool.pytest.ini_options]
 qt_api = "pyside6"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient`",
+]

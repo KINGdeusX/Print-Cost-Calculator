@@ -31,6 +31,57 @@ _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _HTTP_CODES = {404: "not_found", 405: "method_not_allowed", 403: "forbidden"}
 
 
+_SLACK = 1024 * 1024  # multipart framing overhead
+
+
+class BodyLimitMiddleware:
+    """Reject request bodies over the cap, by Content-Length or bytes received."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] not in ("POST", "PUT", "PATCH"):
+            await self.app(scope, receive, send)
+            return
+        limit = MAX_UPLOAD_BYTES + _SLACK
+        length = dict(scope["headers"]).get(b"content-length", b"")
+        if length.isdigit() and int(length) > limit:
+            await self._reject(scope, receive, send)
+            return
+        seen = 0
+        tripped = False
+
+        async def counting_receive():
+            nonlocal seen, tripped
+            if tripped:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > limit:
+                    tripped = True
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def guarded_send(message):
+            if not tripped:  # drop whatever the app answers once we cut the body
+                await send(message)
+
+        try:
+            await self.app(scope, counting_receive, guarded_send)
+        except Exception:
+            if not tripped:
+                raise
+        if tripped:
+            await self._reject(scope, receive, send)
+
+    @staticmethod
+    async def _reject(scope, receive, send):
+        response = _error(413, "too_large", "Upload exceeds the 50 MB limit.")
+        await response(scope, receive, send)
+
+
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str):
         self.status, self.code, self.message = status, code, message
@@ -58,19 +109,12 @@ def create_app(config_directory: Path | None = None) -> FastAPI:
 
     app = FastAPI(title="Print Cost Calculator API", version=__version__)
     app.state.settings, app.state.catalog = state.settings, state.catalog
+    app.add_middleware(BodyLimitMiddleware)  # inner; CORS added after is outermost
     if origins:
         app.add_middleware(
             CORSMiddleware, allow_origins=origins,
             allow_methods=["*"], allow_headers=["*"],
         )
-
-    @app.middleware("http")
-    async def limit_body(request: Request, call_next):
-        length = request.headers.get("content-length", "")
-        # small slack for multipart framing
-        if length.isdigit() and int(length) > MAX_UPLOAD_BYTES + 1024 * 1024:
-            return _error(413, "too_large", "Upload exceeds the 50 MB limit.")
-        return await call_next(request)
 
     @app.exception_handler(ApiError)
     async def _api_error(_r: Request, e: ApiError):
@@ -82,6 +126,10 @@ def create_app(config_directory: Path | None = None) -> FastAPI:
             f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()
         ]
         return _error(422, "invalid_request", "; ".join(parts) or "Invalid request.")
+
+    @app.exception_handler(Exception)
+    async def _unhandled(_r: Request, _e: Exception):
+        return _error(500, "internal_error", "Internal server error")
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(_r: Request, e: StarletteHTTPException):

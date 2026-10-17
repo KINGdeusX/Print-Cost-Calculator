@@ -152,7 +152,61 @@ def test_too_large(client, monkeypatch):
     assert r.status_code == 413 and r.json()["error"]["code"] == "too_large"
     r = client.post(Q + "/3mf", content=b"x" * (1024 * 1024 + 500),
                     headers={"content-type": "multipart/form-data; boundary=x"})
+    assert r.status_code == 413 and r.json()["error"]["code"] == "too_large"
+
+
+def test_too_large_streamed_without_content_length(client, monkeypatch):
+    import pcc.api.server as s
+
+    monkeypatch.setattr(s, "MAX_UPLOAD_BYTES", 100)
+
+    def chunks():
+        yield (b'--x\r\nContent-Disposition: form-data; name="file"; filename="p.3mf"\r\n'
+               b"Content-Type: application/octet-stream\r\n\r\n")
+        for _ in range(40):
+            yield b"x" * 65536
+
+    r = client.post(Q + "/3mf", content=chunks(),
+                    headers={"content-type": "multipart/form-data; boundary=x"})
+    assert "content-length" not in r.request.headers
+    assert r.status_code == 413 and r.json()["error"]["code"] == "too_large"
+
+
+def test_413_carries_cors(cfg_dir, monkeypatch):
+    import pcc.api.server as s
+
+    c = _client(cfg_dir, monkeypatch, cors="https://a.example")
+    monkeypatch.setattr(s, "MAX_UPLOAD_BYTES", 100)
+    r = c.post(Q + "/3mf", content=b"x" * (1024 * 1024 + 500),
+               headers={"content-type": "multipart/form-data; boundary=x",
+                        "Origin": "https://a.example"})
     assert r.status_code == 413
+    assert r.headers["access-control-allow-origin"] == "https://a.example"
+
+
+def test_unhandled_error_is_500_json(admin_client, monkeypatch):
+    import pcc.api.server as s
+
+    def boom(*a, **k):
+        raise OSError("disk full: /secret/path")
+
+    monkeypatch.setattr(s, "save_settings", boom)
+    c = TestClient(admin_client.app, raise_server_exceptions=False)
+    st = c.get("/api/v1/admin/settings", headers=AUTH).json()
+    r = c.put("/api/v1/admin/settings", json=st, headers=AUTH)
+    assert r.status_code == 500
+    assert r.json() == {"error": {"code": "internal_error", "message": "Internal server error"}}
+
+
+def test_schema_limits(client):
+    p = BODY["plates"][0]
+    assert client.post(Q, json={**BODY, "plates": [{**p, "copies": 1000}]}).status_code == 422
+    assert client.post(Q, json={**BODY, "plates": [p] * 201}).status_code == 422
+    many = {**p, "filaments": [p["filaments"][0]] * 51}
+    assert client.post(Q, json={**BODY, "plates": [many]}).status_code == 422
+    r = client.post(Q, content=b'{"plates":[{"name":"A","hours":NaN,"filaments":[]}]}',
+                    headers={"content-type": "application/json"})
+    assert r.status_code == 422
 
 
 def test_cors_header(cfg_dir, monkeypatch):
@@ -193,8 +247,15 @@ def test_settings_get_put(admin_client, cfg_dir):
     assert r.status_code == 200 and r.json()["margin_pct"] == 10.0
     assert admin_client.get("/api/v1/admin/settings", headers=AUTH).json()["margin_pct"] == 10.0
     assert '"margin_pct": 10.0' in (cfg_dir / "settings.json").read_text(encoding="utf-8")
-    # in-memory state replaced: quotes use the new margin
-    assert admin_client.put("/api/v1/admin/settings", json=[1], headers=AUTH).status_code in (400, 422)
+    s["margin_pct"] = 500.0
+    admin_client.put("/api/v1/admin/settings", json=s, headers=AUTH)
+    # in-memory state replaced: a quote now uses the new margin
+    assert admin_client.post(Q, json=BODY).json()["price"] > 0
+    big = admin_client.post(Q, json=BODY).json()["price"]
+    s["margin_pct"] = 0.0
+    admin_client.put("/api/v1/admin/settings", json=s, headers=AUTH)
+    assert admin_client.post(Q, json=BODY).json()["price"] < big
+    assert admin_client.put("/api/v1/admin/settings", json=[1], headers=AUTH).status_code == 400
 
 
 def test_catalog_get_put(admin_client, cfg_dir):
