@@ -103,13 +103,14 @@ def parse_3mf(
         raise ThreeMFError(_BAD_FILE) from e
 
     with zf:
-        if any(i.file_size > MAX_ENTRY_BYTES for i in zf.infolist()):
-            raise ThreeMFError(_BAD_FILE)
         names = set(zf.namelist())
 
         def read(name: str) -> bytes | None:
+            # Cap only the entries we read: real files carry big gcode/meshes.
             if name not in names:
                 return None
+            if zf.getinfo(name).file_size > MAX_ENTRY_BYTES:
+                raise ThreeMFError(_BAD_FILE)
             try:
                 return zf.read(name)
             except (zipfile.BadZipFile, OSError, zlib.error, EOFError, RuntimeError) as e:

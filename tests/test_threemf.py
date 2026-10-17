@@ -96,12 +96,39 @@ def test_not_a_zip():
         parse_3mf(b"hello", "a.3mf")
 
 
-def test_zip_bomb_guard():
+def test_zip_bomb_guard(monkeypatch):
+    import pcc.core.threemf as threemf
+    monkeypatch.setattr(threemf, "MAX_ENTRY_BYTES", 1024)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("Metadata/slice_info.config", b"0" * (51 * 1024 * 1024))
+        z.writestr("Metadata/slice_info.config", b"0" * 2048)
     with pytest.raises(ThreeMFError, match=r"^Not a valid \.3mf file\.$"):
         parse_3mf(buf.getvalue(), "a.3mf")
+
+
+def test_oversized_thumbnail_rejected(monkeypatch):
+    import pcc.core.threemf as threemf
+    src = build_3mf([PLATE])
+    monkeypatch.setattr(threemf, "MAX_ENTRY_BYTES", 1024)
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(src)) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for n in zin.namelist():
+            zout.writestr(n, b"\x89PNG" + b"0" * 4096 if n.endswith(".png") else zin.read(n))
+    with pytest.raises(ThreeMFError, match=r"^Not a valid \.3mf file\.$"):
+        parse_3mf(out.getvalue(), "a.3mf")
+
+
+def test_large_unread_entries_allowed():
+    # Real .gcode.3mf files carry plate gcode / meshes far above the read cap.
+    src = build_3mf([PLATE])
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(src)) as zin, zipfile.ZipFile(out, "w") as zout:
+        for n in zin.namelist():
+            zout.writestr(n, zin.read(n), zipfile.ZIP_DEFLATED)
+        zout.writestr("Metadata/plate_1.gcode", b"G1 X0\n" * (64 * 1024 * 1024 // 6),
+                      zipfile.ZIP_DEFLATED, compresslevel=1)
+    p = parse_3mf(out.getvalue(), "x.gcode.3mf")
+    assert len(p.plates) == 1 and p.plates[0].filaments[0].grams == approx(5)
 
 
 def test_unsliced():
