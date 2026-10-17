@@ -1,7 +1,6 @@
 """Export menu and save/append flow for the Excel report."""
 from __future__ import annotations
 
-import zipfile
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QUrl
@@ -101,8 +100,6 @@ class ExportFlow(QObject):
         return self.append_last() if self.has_last() else self.new_report()
 
     def export(self, path: Path, append: bool) -> bool:
-        from openpyxl.utils.exceptions import InvalidFileException
-
         from pcc.core import export_xlsx
 
         parent = self._parent_widget()
@@ -120,8 +117,7 @@ class ExportFlow(QObject):
                     parent)
                 if box.exec() != QMessageBox.StandardButton.Retry:
                     return False
-            except (OSError, zipfile.BadZipFile, InvalidFileException,
-                    KeyError, ValueError) as e:
+            except Exception as e:  # invalid workbook, disk error, ...: never raise from the menu
                 QMessageBox.critical(parent, "Export failed",
                                      f"Could not save the report: {e}")
                 return False

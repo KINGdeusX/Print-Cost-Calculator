@@ -196,3 +196,14 @@ def test_new_report_no_extra_prompt_when_dialog_confirmed(qtbot, cfg_dir, tmp_pa
     monkeypatch.setattr(QMessageBox, "question",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked")))
     assert flow.new_report() is True
+
+
+def test_unexpected_export_error_is_reported(qtbot, cfg_dir, tmp_path, monkeypatch):
+    state, w = make(qtbot)
+    monkeypatch.setattr(export_xlsx, "export_quote",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("weird")))
+    msgs = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda p, t, m: msgs.append((t, m)))
+    assert w.summary.export_flow.export(tmp_path / "x.xlsx", False) is False
+    assert msgs == [("Export failed", "Could not save the report: weird")]
+    assert state.settings.last_export_path == ""
