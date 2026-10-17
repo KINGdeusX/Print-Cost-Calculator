@@ -265,3 +265,23 @@ def test_toast_sits_below_top_bar(qtbot, cfg_dir, tmp_path):
     eb = w.summary.export_button
     export_rect = eb.rect().translated(eb.mapTo(w.centralWidget(), QPoint(0, 0)))
     assert not w.toast.geometry().intersects(export_rect)
+
+
+def test_splash_uses_screen_device_pixel_ratio(qtbot, monkeypatch):
+    from PySide6.QtGui import QGuiApplication
+
+    from pcc.gui.splash import H, W, Splash
+
+    class FakeScreen:
+        def devicePixelRatio(self):
+            return 1.5
+
+    monkeypatch.setattr(QGuiApplication, "primaryScreen", staticmethod(lambda: FakeScreen()))
+    s = Splash()
+    qtbot.addWidget(s)
+    pm = s.pixmap()
+    assert pm.devicePixelRatio() == 1.5 and pm.width() == int(W * 1.5) and pm.height() == int(H * 1.5)
+    monkeypatch.setattr(QGuiApplication, "primaryScreen", staticmethod(lambda: None))
+    s2 = Splash()
+    qtbot.addWidget(s2)
+    assert s2.pixmap().devicePixelRatio() == 2.0

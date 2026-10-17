@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QSplashScreen
 
@@ -21,7 +21,9 @@ _ACCENT = QColor("#FF8A3D")
 class Splash(QSplashScreen):
     def __init__(self):
         self._status = "Starting…"
-        self._dpr = 2.0
+        screen = QGuiApplication.primaryScreen()
+        dpr = screen.devicePixelRatio() if screen is not None else 0.0
+        self._dpr = dpr if dpr > 0 else 2.0
         super().__init__(self._paint())
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 
