@@ -197,7 +197,7 @@ class AppState(QObject):
             self.job.plates.extend(
                 project_to_plates(project, self.catalog, self.settings))
             added = True
-            pid = match_printer(project, self.catalog)
+            pid = match_printer(project, self.catalog, matched or self.job.printer_id)
             if pid:
                 matched = pid
         if matched:

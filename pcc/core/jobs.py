@@ -20,7 +20,7 @@ def build_job_from_project(
         if catalog.printer(printer_id) is None:
             raise PricingError(f"unknown printer id: {printer_id}")
     else:
-        printer_id = match_printer(project, catalog)
+        printer_id = match_printer(project, catalog, settings.last_printer_id or None)
         if printer_id is None:
             if settings.last_printer_id and catalog.printer(settings.last_printer_id):
                 printer_id = settings.last_printer_id

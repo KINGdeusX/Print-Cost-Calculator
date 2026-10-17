@@ -143,3 +143,16 @@ def test_transient_save_error_retried(qtbot, cfg_dir, monkeypatch):
     s.flush()
     assert warnings == [] and len(calls) == 2
     assert (cfg_dir / "settings.json").exists()
+
+
+def test_import_prefers_current_printer_among_matches(qtbot, cfg_dir, tmp_path):
+    from pcc.core.models import PrinterProfile
+    good = tmp_path / "a.3mf"
+    good.write_bytes(MULTI_PLATE_PROJECT)
+    s = AppState(legacy_paths=[])
+    s.catalog.printers.append(PrinterProfile("my-p1s", "My P1S", 120.0, model_match=["P1S"]))
+    s.import_files([good])
+    assert s.job.printer_id == "my-p1s"
+    s.update_job(printer_id="bambu-p1s")
+    s.import_files([good])
+    assert s.job.printer_id == "bambu-p1s"

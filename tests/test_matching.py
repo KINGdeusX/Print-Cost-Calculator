@@ -61,3 +61,47 @@ def test_project_to_plates():
     assert f[0].source_type == "PLA"
     assert f[0].source_name == "Bambu PLA Basic @BBL P1S"
     assert f[0].source_color == "#FFFFFF"
+
+
+def _with_my_p1s():
+    from pcc.core.models import PrinterProfile
+    cat = default_catalog()
+    cat.printers.append(PrinterProfile("my-p1s", "My P1S", 120.0, model_match=["P1S"]))
+    return cat
+
+
+def test_user_profile_preferred_over_seeded_on_tie():
+    cat = _with_my_p1s()
+    proj = ParsedProject("a.3mf", "Bambu Lab P1S", None, [])
+    assert match_printer(proj, cat) == "my-p1s"
+    assert match_printer(proj, cat, prefer_id="bambu-a1") == "my-p1s"
+
+
+def test_current_printer_preferred_when_it_matches():
+    cat = _with_my_p1s()
+    proj = ParsedProject("a.3mf", "Bambu Lab P1S", None, [])
+    assert match_printer(proj, cat, prefer_id="bambu-p1s") == "bambu-p1s"
+    assert match_printer(proj, cat, prefer_id="my-p1s") == "my-p1s"
+
+
+def test_longest_model_match_wins_regardless_of_order():
+    from pcc.core.models import PrinterProfile
+    cat = default_catalog()
+    cat.printers.reverse()  # prefixes ("X1", "A1") now precede the specific models
+    assert match_printer(ParsedProject("a", "Bambu Lab X1 Carbon", None, []), cat) == "bambu-x1-carbon"
+    assert match_printer(ParsedProject("a", "Bambu Lab A1 mini", None, []), cat) == "bambu-a1-mini"
+    # a less specific current printer does not beat a more specific match
+    assert match_printer(ParsedProject("a", "Bambu Lab X1 Carbon", None, []), cat,
+                         prefer_id="bambu-x1") == "bambu-x1-carbon"
+    cat.printers.append(PrinterProfile("mine", "Mine", 1.0, model_match=["Bambu Lab P1S"]))
+    assert match_printer(ParsedProject("a", "Bambu Lab P1S", None, []), cat,
+                         prefer_id="bambu-p1s") == "mine"
+
+
+def test_build_job_prefers_last_printer():
+    from pcc.core.jobs import build_job_from_project
+    cat = _with_my_p1s()
+    proj = parse_3mf(MULTI_PLATE_PROJECT, "cube.gcode.3mf")
+    assert build_job_from_project(proj, Settings(), cat).printer_id == "my-p1s"
+    s = Settings(last_printer_id="bambu-p1s")
+    assert build_job_from_project(proj, s, cat).printer_id == "bambu-p1s"

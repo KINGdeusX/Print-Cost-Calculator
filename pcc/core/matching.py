@@ -6,14 +6,30 @@ from pcc.core.models import Catalog, FilamentUse, Plate, Settings, new_id
 from pcc.core.threemf import ParsedFilament, ParsedProject
 
 
-def match_printer(project: ParsedProject, catalog: Catalog) -> str | None:
+def match_printer(
+    project: ParsedProject, catalog: Catalog, prefer_id: str | None = None
+) -> str | None:
+    """Best catalog printer for the project's printer model, or None.
+
+    The longest matching model_match string wins; among equally specific
+    matches the preferred (current/last) printer, else the last in the catalog
+    (user-added profiles come after the seeded ones).
+    """
     for text in (project.printer_model, project.printer_settings_id):
         if not text:
             continue
         hay = text.casefold()
+        best: list[str] = []
+        best_len = 0
         for printer in catalog.printers:
-            if any(m and m.casefold() in hay for m in printer.model_match):
-                return printer.id
+            n = max((len(m) for m in printer.model_match if m and m.casefold() in hay),
+                    default=0)
+            if n and n > best_len:
+                best, best_len = [printer.id], n
+            elif n and n == best_len:
+                best.append(printer.id)
+        if best:
+            return prefer_id if prefer_id in best else best[-1]
     return None
 
 
