@@ -93,3 +93,26 @@ def test_serve_without_api(monkeypatch, capsys):
     assert main(["serve"]) == 2
     assert ("API support not installed: pip install print-cost-calculator[api]"
             in capsys.readouterr().err)
+
+
+def test_append_requires_export(cfg_dir, tmp_path, capsys):
+    assert main(["quote", str(_file(tmp_path)), "--append"]) == 2
+    assert "--append requires --export" in capsys.readouterr().err
+
+
+def test_export_refuses_existing_file(cfg_dir, tmp_path, capsys):
+    f, r = _file(tmp_path), tmp_path / "r.xlsx"
+    r.write_bytes(b"precious")
+    for target in (r, tmp_path / "r"):  # .xlsx is added to the second one
+        assert main(["quote", str(f), "--export", str(target)]) == 2
+        assert ("error: File exists; use --append or choose another path"
+                in capsys.readouterr().err)
+        assert r.read_bytes() == b"precious"
+    assert main(["quote", str(f), "--export", str(r), "--force"]) == 0
+    assert openpyxl.load_workbook(r)["Jobs"].max_row == 2
+
+
+def test_readme_documents_force():
+    from pathlib import Path
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    assert "--force" in readme

@@ -66,7 +66,9 @@ The app needs slice data, so export from the slicer after slicing:
 pcc quote benchy.3mf --printer bambu-p1s --copies 3 --customer "Ana"
 pcc quote benchy.3mf --json
 pcc quote benchy.3mf --internal                      # cost breakdown, margin and fee
+pcc quote benchy.3mf --export report.xlsx            # new report (refuses an existing file)
 pcc quote benchy.3mf --export report.xlsx --append   # add to an existing report
+pcc quote benchy.3mf --export report.xlsx --force    # replace an existing report
 pcc parse benchy.3mf --json                          # plates, hours, grams, filaments
 pcc printers
 pcc filaments --json

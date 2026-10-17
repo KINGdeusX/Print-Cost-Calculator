@@ -43,7 +43,8 @@ def _build_parser() -> argparse.ArgumentParser:
     q.add_argument("--json", action="store_true")
     q.add_argument("--internal", action="store_true")
     q.add_argument("--export", metavar="REPORT.xlsx")
-    q.add_argument("--append", action="store_true")
+    q.add_argument("--append", action="store_true", help="append to an existing report")
+    q.add_argument("--force", action="store_true", help="overwrite an existing report")
 
     pa = sub.add_parser("parse", help="show plates in a sliced .3mf")
     pa.add_argument("file")
@@ -60,6 +61,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _cmd_quote(a) -> int:
+    if a.export and not a.append and not a.force:
+        from pcc.core.export_xlsx import report_path
+
+        if report_path(Path(a.export)).exists():
+            _err("File exists; use --append or choose another path")
+            return 2
     state = load_state()
     settings, catalog = state.settings, state.catalog
     project = parse_3mf(a.file)
@@ -138,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     try:
         args = parser.parse_args(argv)
+        if args.command == "quote" and args.append and not args.export:
+            parser.error("--append requires --export")
     except SystemExit as e:
         return e.code if isinstance(e.code, int) else (0 if e.code is None else 2)
     handler = {
