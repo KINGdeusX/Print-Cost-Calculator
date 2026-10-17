@@ -14,7 +14,8 @@ def test_spec_excludes_heavy_modules():
     assert "upx=False" in s
     assert "console=False" in s
     assert "openpyxl" in s
-    assert "QtSvg" not in s.split("excludes")[1].split("]")[0]
+    assert "EXCLUDES = [" in s
+    assert "QtSvg" not in s.split("EXCLUDES = [")[1].split("]")[0]
 
 
 def test_desktop_file():
@@ -44,3 +45,17 @@ def test_selftest_runs_unfrozen(qapp, capsys, monkeypatch):
     monkeypatch.setenv("PCC_SELFTEST", "1")
     assert app.main([]) == 0
     assert "selftest ok" in capsys.readouterr().out
+
+
+def test_workflows_present():
+    ci = (ROOT / ".github/workflows/ci.yml").read_text()
+    rel = (ROOT / ".github/workflows/release.yml").read_text()
+    assert "workflow_dispatch" in ci and "QT_QPA_PLATFORM" in ci
+    assert "manylinux_2_28" in rel and "tags:" in rel
+    assert "softprops/action-gh-release@v2" in rel
+
+
+def test_license_and_docs_present():
+    assert "MIT License" in (ROOT / "LICENSE").read_text()
+    assert "## 0.2.0 \u2014 2026-10-17" in (ROOT / "CHANGELOG.md").read_text()
+    assert "/openapi.json" in (ROOT / "README.md").read_text()
