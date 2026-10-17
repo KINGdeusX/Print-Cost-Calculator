@@ -52,7 +52,7 @@ def _build_checked(cls, d, strict: bool, where: str):
     """
     if not isinstance(d, dict):
         if strict:
-            raise ValueError(f"{where}: must be an object")
+            raise ValueError(f"{where.rstrip('.') or 'value'}: must be an object")
         return None
     kwargs: dict[str, Any] = {}
     for f in fields(cls):
