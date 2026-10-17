@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import sys
 from pathlib import Path
 
 from pcc import __version__
 from pcc.core.currency import format_money
-from pcc.core.matching import match_printer, project_to_plates
-from pcc.core.models import new_job
+from pcc.core.jobs import build_job_from_project, project_to_dict
 from pcc.core.pricing import PricingError, compute_quote
 from pcc.core.serialize import catalog_to_dict, dumps, quote_to_dict
 from pcc.core.storage import load_state
@@ -63,23 +63,9 @@ def _cmd_quote(a) -> int:
     state = load_state()
     settings, catalog = state.settings, state.catalog
     project = parse_3mf(a.file)
-    if a.printer:
-        if catalog.printer(a.printer) is None:
-            _err(f"unknown printer id: {a.printer}")
-            return 2
-        printer_id = a.printer
-    else:
-        printer_id = match_printer(project, catalog)
-        if printer_id is None:
-            if settings.last_printer_id and catalog.printer(settings.last_printer_id):
-                printer_id = settings.last_printer_id
-            else:
-                printer_id = catalog.default_printer().id
-    job = new_job(printer_id, settings.default_packaging, a.customer)
-    job.plates = project_to_plates(project, catalog, settings)
-    if a.copies:
-        for plate in job.plates:
-            plate.copies = a.copies
+    job = build_job_from_project(
+        project, settings, catalog, a.printer, a.copies or 1, a.customer
+    )
     quote = compute_quote(job, settings, catalog)
 
     if a.export:
@@ -114,22 +100,7 @@ def _cmd_quote(a) -> int:
 def _cmd_parse(a) -> int:
     project = parse_3mf(a.file)
     if a.json:
-        data = {
-            "source_name": project.source_name,
-            "printer_model": project.printer_model,
-            "printer_settings_id": project.printer_settings_id,
-            "plates": [
-                {
-                    "index": p.index, "name": p.name, "hours": p.hours,
-                    "filaments": [
-                        {"slot": f.slot, "type": f.type, "color": f.color,
-                         "grams": f.grams, "preset_name": f.preset_name}
-                        for f in p.filaments
-                    ],
-                }
-                for p in project.plates
-            ],
-        }
+        data = project_to_dict(project)
         print(dumps(data))
         return 0
     for p in project.plates:
@@ -155,7 +126,7 @@ def _cmd_list(a) -> int:
 
 def _cmd_serve(a) -> int:
     try:
-        from pcc.api import server
+        server = importlib.import_module("pcc.api.server")
     except ImportError:
         _err("API support not installed: pip install print-cost-calculator[api]")
         return 2
