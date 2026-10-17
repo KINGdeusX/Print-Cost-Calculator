@@ -42,13 +42,17 @@ jobs:
         run: |
           dnf install -y epel-release || true
           dnf config-manager --set-enabled powertools || true
+          dnf install -y python3.12 python3.12-devel python3.12-pip
           dnf install -y libxkbcommon-x11 xcb-util-cursor xcb-util-wm xcb-util-keysyms \
             xcb-util-image xcb-util-renderutil mesa-libGL mesa-libEGL fontconfig dbus-libs file \
             xorg-x11-server-Xvfb xorg-x11-xauth
       - name: Create venv
         shell: bash
         run: |
-          /opt/python/cp312-cp312/bin/python -m venv .venv
+          # Use the distro Python explicitly (/usr/bin): it ships libpython3.12.so, whereas the
+          # /opt/python builds on PATH are static, which PyInstaller rejects.
+          /usr/bin/python3.12 -m venv .venv
+          .venv/bin/python -c "import sysconfig,sys; sys.exit(0 if sysconfig.get_config_var('Py_ENABLE_SHARED') else 1)"
           .venv/bin/pip install -U pip
           .venv/bin/pip install ".[gui,dev]"
       - name: Build
