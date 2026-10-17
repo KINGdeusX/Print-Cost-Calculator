@@ -74,3 +74,14 @@ def test_release_linux_checks_xcb_plugin():
     for step in linux.split("      - ")[1:]:
         if "pipefail" in step or " | " in step:
             assert "shell: bash" in step, step
+
+
+def test_docker_runs_as_non_root():
+    df = (ROOT / "Dockerfile").read_text()
+    lines = [ln.strip() for ln in df.splitlines()]
+    assert "useradd" in df and "chown" in df and "/data" in df
+    user = lines.index("USER pcc")
+    assert lines.index(next(ln for ln in lines if ln.startswith("VOLUME"))) > \
+        lines.index(next(ln for ln in lines if "chown" in ln))
+    assert user > lines.index(next(ln for ln in lines if "useradd" in ln))
+    assert user < lines.index(next(ln for ln in lines if ln.startswith("CMD")))
