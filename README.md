@@ -62,7 +62,7 @@ The app needs slice data, so export from the slicer after slicing:
 ## ⌨️ Command line
 
 ```bash
-pcc quote benchy.3mf --printer p1s --copies 3 --customer "Ana"
+pcc quote benchy.3mf --printer bambu-p1s --copies 3 --customer "Ana"
 pcc quote benchy.3mf --json
 pcc quote benchy.3mf --internal                      # cost breakdown, margin and fee
 pcc quote benchy.3mf --export report.xlsx --append   # add to an existing report
@@ -70,6 +70,8 @@ pcc parse benchy.3mf --json                          # plates, hours, grams, fil
 pcc printers
 pcc filaments --json
 ```
+
+Printer and filament ids (like `bambu-p1s`) come from `pcc printers` and `pcc filaments`.
 
 Exit codes: `0` ok, `2` bad input, `3` file error.
 

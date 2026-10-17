@@ -39,7 +39,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install system libraries
         run: |
-          dnf install -y libxkbcommon-x11 xcb-util-cursor xcb-util-wm xcb-util-keysyms \
+          dnf install -y epel-release || true
+          dnf config-manager --set-enabled powertools || true
+          dnf install -y --setopt=skip_missing_names_on_install=True libxkbcommon-x11 xcb-util-cursor xcb-util-wm xcb-util-keysyms \
             xcb-util-image xcb-util-renderutil mesa-libGL mesa-libEGL fontconfig dbus-libs file
       - name: Create venv
         run: |
@@ -52,7 +54,10 @@ jobs:
         env:
           PCC_SELFTEST: "1"
           QT_QPA_PLATFORM: offscreen
-        run: dist/PrintCostCalculator/PrintCostCalculator | tee selftest.out && grep -q "selftest ok" selftest.out
+        run: |
+          set -o pipefail
+          dist/PrintCostCalculator/PrintCostCalculator | tee selftest.out
+          grep -q "selftest ok" selftest.out
       - uses: actions/upload-artifact@v4
         with:
           name: linux
