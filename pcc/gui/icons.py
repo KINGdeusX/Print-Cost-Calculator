@@ -8,6 +8,8 @@ from PySide6.QtCore import QByteArray, QRectF, Qt
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
+from pcc.gui.theme import TOKENS, current_mode
+
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 _DPR = 2
 _APP_SIZES = (16, 32, 48, 64, 128, 256)
@@ -33,13 +35,13 @@ def _icon(name: str, color: str | None, size: int) -> QIcon:
         svg = path.read_text(encoding="utf-8")
     except OSError:
         return QIcon()
-    svg = svg.replace("currentColor", color or "#000000")
+    svg = svg.replace("currentColor", color)
     pm = _render(svg.encode("utf-8"), size)
     return QIcon() if pm.isNull() else QIcon(pm)
 
 
 def icon(name: str, color: str | None = None, size: int = 20) -> QIcon:
-    return _icon(name, color, size)
+    return _icon(name, color or TOKENS[current_mode()]["text"], size)
 
 
 @lru_cache(maxsize=1)

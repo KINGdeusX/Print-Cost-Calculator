@@ -73,3 +73,23 @@ def test_apply_theme(qapp):
     assert apply_theme(qapp, "light") == "light"
     assert apply_theme(qapp, "system") in ("light", "dark")
     assert resolve_mode("dark", qapp) == "dark"
+
+
+def test_qss_chevron_urls_quoted_posix():
+    import re
+
+    for mode in ("light", "dark"):
+        urls = re.findall(r"url\((.*?)\)", build_qss(mode))
+        assert len(urls) == 4
+        for u in urls:
+            assert u.startswith('"') and u.endswith('"')
+            assert "\\" not in u
+            assert Path(u.strip('"')).is_file()
+
+
+def test_icon_default_color_follows_theme(qapp):
+    apply_theme(qapp, "dark")
+    img = icon("sun").pixmap(20, 20).toImage()
+    want = TOKENS["dark"]["text"].lstrip("#").upper()
+    hits = [c for c in (img.pixelColor(x, y) for x in range(img.width()) for y in range(img.height())) if c.alpha() == 255]
+    assert hits and all(c.name().lstrip("#").upper() == want for c in hits)

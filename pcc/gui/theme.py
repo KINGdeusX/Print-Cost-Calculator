@@ -22,7 +22,12 @@ TOKENS: dict[str, dict[str, str]] = {
 }
 
 _QSS_DIR = Path(__file__).resolve().parent.parent / "assets" / "qss"
+_current_mode = "light"
 FONT_STACK = '"Segoe UI", "Inter", "Noto Sans", sans-serif'
+
+
+def current_mode() -> str:
+    return _current_mode
 
 
 def resolve_mode(theme: str, app: QGuiApplication) -> str:
@@ -83,14 +88,12 @@ QPlainTextEdit, QTextEdit {{ padding: 6px 10px; }}
 QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {{ border-color: {c['text_muted']}; }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {{ border: 2px solid {c['accent']}; padding: 0 9px; }}
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {{ background: {c['dis_bg']}; color: {c['dis_text']}; }}
-QSpinBox, QDoubleSpinBox {{ padding: 0 28px 0 10px; }}
-QSpinBox:focus, QDoubleSpinBox:focus {{ padding: 0 27px 0 9px; }}
 QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 28px; border: none; }}
-QComboBox::down-arrow {{ image: url({down}); width: 14px; height: 14px; }}
+QComboBox::down-arrow {{ image: url("{down}"); width: 14px; height: 14px; }}
 QSpinBox::up-button, QDoubleSpinBox::up-button {{ subcontrol-origin: border; subcontrol-position: top right; width: 24px; border: none; margin: 3px 3px 0 0; }}
 QSpinBox::down-button, QDoubleSpinBox::down-button {{ subcontrol-origin: border; subcontrol-position: bottom right; width: 24px; border: none; margin: 0 3px 3px 0; }}
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ image: url({up}); width: 10px; height: 10px; }}
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url({down}); width: 10px; height: 10px; }}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ image: url("{up}"); width: 10px; height: 10px; }}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url("{down}"); width: 10px; height: 10px; }}
 QSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{ background: {c['hover']}; border-radius: 4px; }}
 QComboBox QAbstractItemView {{ background: {c['surface']}; border: 1px solid {c['border']}; border-radius: 8px; padding: 4px; outline: none; selection-background-color: {c['sel_bg']}; selection-color: {c['text']}; }}
 
@@ -175,7 +178,9 @@ def _palette(mode: str) -> QPalette:
 
 
 def apply_theme(app, theme: str) -> str:
+    global _current_mode
     mode = resolve_mode(theme, app)
+    _current_mode = mode
     app.setStyle("Fusion")
     app.setPalette(_palette(mode))
     app.setStyleSheet(build_qss(mode))
