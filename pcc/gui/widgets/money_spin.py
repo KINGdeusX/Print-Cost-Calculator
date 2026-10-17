@@ -55,3 +55,27 @@ class MoneySpin(GuardedDoubleSpin):
 
     def set_symbol(self, symbol: str) -> None:
         self.setPrefix(f"{symbol} " if symbol else "")
+
+
+CUSTOM_CURRENCY = "Custom…"
+
+
+def fill_currency_combo(combo: QComboBox, code: str, symbol: str) -> None:
+    """Fill ``combo`` with the known currencies (+ the current one if custom, + Custom…).
+
+    Signals are blocked while filling; the current currency ends up selected.
+    """
+    from pcc.core.currency import CURRENCIES
+
+    combo.blockSignals(True)
+    combo.clear()
+    known = set()
+    for c, sym, name in CURRENCIES:
+        combo.addItem(f"{sym} {c}", c)
+        combo.setItemData(combo.count() - 1, name, Qt.ItemDataRole.ToolTipRole)
+        known.add(c)
+    if code not in known:
+        combo.addItem(f"{symbol} {code}", code)
+    combo.addItem(CUSTOM_CURRENCY, None)
+    combo.setCurrentIndex(combo.findData(code))
+    combo.blockSignals(False)

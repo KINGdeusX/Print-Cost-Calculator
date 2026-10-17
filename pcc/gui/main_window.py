@@ -18,13 +18,14 @@ from pcc.gui.theme import apply_theme, current_mode, resolve_mode
 from pcc.gui.widgets.banner import Banner
 from pcc.gui.widgets.drop_overlay import DropOverlay
 from pcc.gui.widgets.job_panel import JobPanel
+from pcc.gui.widgets.money_spin import fill_currency_combo
 from pcc.gui.widgets.plates_view import PlatesView
 from pcc.gui.widgets.summary_panel import SummaryPanel
 from pcc.gui.widgets.toast import Toast
 
 COMPACT_WIDTH = 1000
 _THEMES = ("system", "light", "dark")
-_CUSTOM = "Custom…"
+_MANAGE = "__manage__"
 
 
 def _area(name: str) -> QWidget:
@@ -86,6 +87,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         QShortcut(QKeySequence.StandardKey.Open, self, activated=self.import_dialog)
         QShortcut(QKeySequence.StandardKey.New, self, activated=self.new_job)
+        QShortcut(QKeySequence("Ctrl+,"), self, activated=self.open_settings)
 
         self._refresh_printers()
         self._refresh_currency()
@@ -133,6 +135,7 @@ class MainWindow(QMainWindow):
         self.printer_combo.currentIndexChanged.connect(self._on_printer)
         self.currency_combo.currentIndexChanged.connect(self._on_currency)
         self.theme_button.clicked.connect(self._cycle_theme)
+        self.settings_button.clicked.connect(self.open_settings)
         return bar
 
     def _build_splitters(self) -> None:
@@ -184,37 +187,31 @@ class MainWindow(QMainWindow):
         c.clear()
         for p in self.state.catalog.printers:
             c.addItem(p.name, p.id)
+        c.insertSeparator(c.count())
+        c.addItem("✏️ Manage printers…", _MANAGE)
         c.blockSignals(False)
         self._sync_printer_selection()
 
-    def _sync_printer_selection(self) -> None:
+    def _sync_printer_selection(self, force: bool = False) -> None:
         c = self.printer_combo
         i = c.findData(self.state.job.printer_id)
-        if i >= 0 and i != c.currentIndex():
+        if i >= 0 and (force or i != c.currentIndex()):
             c.blockSignals(True)
             c.setCurrentIndex(i)
             c.blockSignals(False)
 
     def _on_printer(self, index: int) -> None:
         pid = self.printer_combo.itemData(index)
-        if pid:
+        if pid == _MANAGE:
+            self._sync_printer_selection(force=True)  # never leave the manage item selected
+            self.open_printers_dialog()
+        elif pid:
             self.state.update_job(printer_id=pid)
 
     def _refresh_currency(self) -> None:
         s = self.state.settings
         c = self.currency_combo
-        c.blockSignals(True)
-        c.clear()
-        known = set()
-        for code, sym, name in CURRENCIES:
-            c.addItem(f"{sym} {code}", code)
-            c.setItemData(c.count() - 1, name, Qt.ItemDataRole.ToolTipRole)
-            known.add(code)
-        if s.currency_code not in known:
-            c.addItem(f"{s.currency_symbol} {s.currency_code}", s.currency_code)
-        c.addItem(_CUSTOM, None)
-        c.setCurrentIndex(c.findData(s.currency_code))
-        c.blockSignals(False)
+        fill_currency_combo(c, s.currency_code, s.currency_symbol)
 
     def _on_currency(self, index: int) -> None:
         code = self.currency_combo.itemData(index)
@@ -231,6 +228,17 @@ class MainWindow(QMainWindow):
         sym = next(s for c, s, _ in CURRENCIES if c == code) if any(
             c == code for c, _, _ in CURRENCIES) else self.state.settings.currency_symbol
         self.state.update_settings(currency_code=code, currency_symbol=sym)
+
+    # -- dialogs ------------------------------------------------------
+    def open_printers_dialog(self) -> None:
+        from pcc.gui.dialogs.printers_dialog import PrintersDialog
+        PrintersDialog(self.state, self).exec()
+
+    def open_settings(self) -> None:
+        from pcc.gui.dialogs.settings_dialog import SettingsDialog
+        if SettingsDialog(self.state, self).exec():
+            apply_theme(QApplication.instance(), self.state.settings.theme)
+            self._refresh_theme_button()
 
     # -- theme --------------------------------------------------------
     def _cycle_theme(self) -> None:

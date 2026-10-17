@@ -18,6 +18,7 @@ from pcc.gui.widgets.money_spin import (
 )
 
 THUMB = 64
+MANAGE_FILAMENTS = "__manage__"
 _BADGE_MATCHES = ("type", "default")
 
 
@@ -67,6 +68,7 @@ class FilamentRow(QWidget):
         row.addWidget(self.badge)
         row.addWidget(self.remove_button)
         self._items: list[tuple] = []
+        self._current_id: str | None = None
         self.combo.activated.connect(self._on_combo)
         self.grams_spin.valueChanged.connect(self._on_grams)
         self.remove_button.clicked.connect(self._on_remove)
@@ -84,6 +86,8 @@ class FilamentRow(QWidget):
         self.combo.clear()
         for fid, name, color in items:
             self.combo.addItem(QIcon(swatch(color)), name, fid)
+        self.combo.insertSeparator(self.combo.count())
+        self.combo.addItem("✏️ Manage filaments…", MANAGE_FILAMENTS)
         self.combo.blockSignals(False)
 
     def set_use(self, use: FilamentUse, removable: bool) -> bool:
@@ -91,6 +95,7 @@ class FilamentRow(QWidget):
         i = self.combo.findData(use.filament_id)
         if i < 0:
             return False
+        self._current_id = use.filament_id
         if i != self.combo.currentIndex():
             self.combo.blockSignals(True)
             self.combo.setCurrentIndex(i)
@@ -111,6 +116,13 @@ class FilamentRow(QWidget):
 
     def _on_combo(self, i: int) -> None:
         fid = self.combo.itemData(i)
+        if fid == MANAGE_FILAMENTS:
+            self.combo.blockSignals(True)  # restore, never leave the manage item selected
+            self.combo.setCurrentIndex(self.combo.findData(self._current_id))
+            self.combo.blockSignals(False)
+            self.card.open_filaments_dialog()
+            return
+        self._current_id = fid
         self.card.edit_use(self.index, filament_id=fid, match="manual")
 
     def _on_grams(self, v: float) -> None:
@@ -223,6 +235,10 @@ class PlateCard(QFrame):
         uses = list(self.plate.filaments)
         uses[index] = replace(uses[index], **changes)
         self._set(filaments=uses)
+
+    def open_filaments_dialog(self) -> None:
+        from pcc.gui.dialogs.filaments_dialog import FilamentsDialog
+        FilamentsDialog(self.state, self.window()).exec()
 
     def remove_use(self, index: int) -> None:
         uses = list(self.plate.filaments)
