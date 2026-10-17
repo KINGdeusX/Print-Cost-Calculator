@@ -8,7 +8,7 @@ from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog, QLabel,
-    QFileDialog, QMainWindow, QMessageBox, QSplitter, QToolButton, QVBoxLayout, QWidget,
+    QFileDialog, QMainWindow, QMessageBox, QScrollArea, QSplitter, QToolButton, QVBoxLayout, QWidget,
 )
 
 from pcc.core.currency import CURRENCIES
@@ -35,15 +35,29 @@ def _area(name: str) -> QWidget:
     return w
 
 
+def _scrolled(panel: QWidget) -> QScrollArea:
+    """Let a panel scroll instead of overlapping when the window is small."""
+    sa = QScrollArea()
+    sa.setWidgetResizable(True)
+    sa.setFrameShape(QFrame.Shape.NoFrame)
+    sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    sa.setWidget(panel)
+    return sa
+
+
 class MainWindow(QMainWindow):
     def __init__(self, state: AppState):
         super().__init__()
         self.state = state
         self.setWindowTitle("Print Cost Calculator")
         self.setWindowIcon(app_icon())
+        # explicit floor: below COMPACT_WIDTH the compact layout needs far less
+        # than the three-column layout does, so do not inherit its minimum
+        self.setMinimumSize(640, 460)
         self.job_area = _area("job_area")
         self.plates_area = _area("plates_area")
         self.summary_area = _area("summary_area")
+        self.job_area.setMaximumWidth(280)
         self._compact: bool | None = None
 
         root = QWidget()
@@ -62,11 +76,12 @@ class MainWindow(QMainWindow):
         self.job_panel = JobPanel(state)
         self.plates_view = PlatesView(state)
         self.summary = SummaryPanel(state)
-        self.job_area.layout().addWidget(self.job_panel)
+        self.job_area.layout().addWidget(_scrolled(self.job_panel))
         self.plates_area.layout().addWidget(self.plates_view)
-        self.summary_area.layout().addWidget(self.summary)
+        self.summary_area.layout().addWidget(_scrolled(self.summary))
         self.plates_view.import_requested.connect(self.import_dialog)
-        self.toast = Toast(root)
+        self._import_warnings: list[str] | None = None
+        self.toast = Toast(root, anchor_top=self._content_top)
         self.drop_overlay = DropOverlay(root)
         self.setAcceptDrops(True)
         QShortcut(QKeySequence.StandardKey.Open, self, activated=self.import_dialog)
@@ -79,7 +94,7 @@ class MainWindow(QMainWindow):
         state.job_changed.connect(self._sync_printer_selection)
         state.settings_changed.connect(self._refresh_currency)
         state.settings_changed.connect(self._refresh_theme_button)
-        state.warning.connect(lambda msg: self.show_warnings([msg]))
+        state.warning.connect(self._on_warning)
         QGuiApplication.styleHints().colorSchemeChanged.connect(self._on_scheme)
 
         self._restore_geometry()
@@ -134,22 +149,23 @@ class MainWindow(QMainWindow):
             return
         self._compact = compact
         job, plates, summary = self.job_area, self.plates_area, self.summary_area
+        summary.setMaximumWidth(16777215 if compact else 360)
         if compact:
             self._narrow_top.addWidget(job)
             self._narrow_top.addWidget(plates)
             self._narrow.addWidget(summary)
-            self._narrow_top.setStretchFactor(0, 1)
-            self._narrow_top.setStretchFactor(1, 2)
+            self._narrow_top.setStretchFactor(0, 0)
+            self._narrow_top.setStretchFactor(1, 1)
             self._narrow.setStretchFactor(0, 2)
             self._narrow.setStretchFactor(1, 1)
-            self._narrow_top.setSizes([100, 200])
+            self._narrow_top.setSizes([240, 600])
             self._narrow.setSizes([200, 100])
         else:
             for i, w in enumerate((job, plates, summary)):
                 self._wide.insertWidget(i, w)
-            for i, s in enumerate((10, 20, 12)):
+            for i, s in enumerate((0, 1, 0)):
                 self._wide.setStretchFactor(i, s)
-            self._wide.setSizes([100, 200, 120])
+            self._wide.setSizes([270, 640, 340])
         self._wide.setVisible(not compact)
         self._narrow.setVisible(compact)
 
@@ -247,13 +263,29 @@ class MainWindow(QMainWindow):
         if names:
             self.import_files([Path(n) for n in names])
 
+    def _content_top(self) -> int:
+        area = self._narrow if self.is_compact() else self._wide
+        return area.geometry().top()
+
+    def _on_warning(self, msg: str) -> None:
+        if self._import_warnings is not None:
+            self._import_warnings.append(msg)
+        else:
+            self.show_warnings([msg])
+
     def import_files(self, paths: list[Path]) -> None:
+        self.banner.hide()
         before = len(self.state.job.plates)
-        failures = self.state.import_files([Path(p) for p in paths])
+        self._import_warnings = []
+        try:
+            failures = self.state.import_files([Path(p) for p in paths])
+        finally:
+            warnings, self._import_warnings = self._import_warnings, None
         added = len(self.state.job.plates) - before
-        if failures:
-            level = "danger" if len(failures) == len(paths) else "warning"
-            self.banner.show_messages(level, [f"{n}: {r}" for n, r in failures])
+        lines = [f"{n}: {r}" for n, r in failures] + warnings
+        if lines:
+            all_failed = bool(failures) and len(failures) == len(paths)
+            self.banner.show_messages("danger" if all_failed else "warning", lines)
         if added > 0:
             self.toast.show_toast(f"✅ Imported {added} plate(s)")
 

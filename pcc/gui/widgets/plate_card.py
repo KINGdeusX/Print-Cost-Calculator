@@ -86,9 +86,12 @@ class FilamentRow(QWidget):
             self.combo.addItem(QIcon(swatch(color)), name, fid)
         self.combo.blockSignals(False)
 
-    def set_use(self, use: FilamentUse, removable: bool) -> None:
+    def set_use(self, use: FilamentUse, removable: bool) -> bool:
+        """Show a use; returns False if its filament is not in the catalog."""
         i = self.combo.findData(use.filament_id)
-        if i >= 0 and i != self.combo.currentIndex():
+        if i < 0:
+            return False
+        if i != self.combo.currentIndex():
             self.combo.blockSignals(True)
             self.combo.setCurrentIndex(i)
             self.combo.blockSignals(False)
@@ -104,6 +107,7 @@ class FilamentRow(QWidget):
                 f"Closest match{' for ' + src if src else ''}. "
                 "Click to pick the right filament.")
         self.remove_button.setVisible(removable)
+        return True
 
     def _on_combo(self, i: int) -> None:
         fid = self.combo.itemData(i)
@@ -258,6 +262,7 @@ class PlateCard(QFrame):
             self.labor_spin.blockSignals(True)
             self.labor_spin.setValue(plate.labor)
             self.labor_spin.blockSignals(False)
+        structure_changed = len(self.rows) != len(plate.filaments)
         while len(self.rows) < len(plate.filaments):
             r = FilamentRow(self)
             self.rows.append(r)
@@ -266,15 +271,23 @@ class PlateCard(QFrame):
             r = self.rows.pop()
             self.rows_box.removeWidget(r)
             r.deleteLater()
-        for r, use in zip(self.rows, plate.filaments):
+        fixes: list[tuple[int, str]] = []
+        for i, (r, use) in enumerate(zip(self.rows, plate.filaments)):
             r.set_catalog(self.state.catalog)
-            r.set_use(use, removable=len(plate.filaments) > 1)
+            if not r.set_use(use, removable=len(plate.filaments) > 1):
+                fixes.append((i, self.state.catalog.default_filament().id))
         self._refresh_thumb(plate.thumbnail_png)
-        # style-sheet min-heights only count once polished; measure after that
-        for w in self.findChildren(QWidget):
-            w.ensurePolished()
-        self.layout().invalidate()
-        self.updateGeometry()
+        if structure_changed:
+            # style-sheet min-heights only count once polished; measure after that
+            for w in self.findChildren(QWidget):
+                w.ensurePolished()
+            self.layout().invalidate()
+            self.updateGeometry()
+        if fixes:  # model references a filament that no longer exists
+            uses = list(plate.filaments)
+            for i, fid in fixes:
+                uses[i] = replace(uses[i], filament_id=fid, match="manual")
+            self._set(filaments=uses)
 
     def _refresh_thumb(self, png: bytes | None) -> None:
         if png == self._thumb_bytes:

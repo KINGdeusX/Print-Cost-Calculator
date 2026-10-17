@@ -101,13 +101,13 @@ def test_warning_shown_in_banner(qtbot, cfg_dir):
 def test_geometry_saved_on_close(qtbot, cfg_dir):
     state, w = make(qtbot)
     w.show()
-    w.resize(760, 600)
+    w.resize(700, 500)
     w.close()
     assert state.settings.window_geometry
     base64.b64decode(state.settings.window_geometry)
     state2, w2 = make(qtbot)
     w2.show()
-    assert w2.size().width() == 760
+    assert w2.size().width() == 700
 
 
 def test_main_timing_smoke(capsys, cfg_dir, monkeypatch):

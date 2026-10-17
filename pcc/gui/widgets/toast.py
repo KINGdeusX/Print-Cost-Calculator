@@ -1,4 +1,4 @@
-"""Transient bottom-right notification with optional action buttons."""
+"""Transient top-right (below the top bar/banner) notification with optional action buttons."""
 from __future__ import annotations
 
 from typing import Callable
@@ -10,8 +10,9 @@ _MARGIN = 20
 
 
 class Toast(QFrame):
-    def __init__(self, parent):
+    def __init__(self, parent, anchor_top: Callable[[], int] | None = None):
         super().__init__(parent)
+        self._anchor_top = anchor_top or (lambda: 0)
         self.setProperty("card", True)
         self._row = QHBoxLayout(self)
         self._row.setContentsMargins(16, 12, 12, 12)
@@ -46,7 +47,7 @@ class Toast(QFrame):
     def _place(self) -> None:
         p = self.parentWidget()
         self.adjustSize()
-        self.move(p.width() - self.width() - _MARGIN, p.height() - self.height() - _MARGIN)
+        self.move(p.width() - self.width() - _MARGIN, self._anchor_top() + _MARGIN)
 
     def eventFilter(self, obj, event) -> bool:
         if event.type() == QEvent.Type.Resize and self.isVisible():
