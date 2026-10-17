@@ -2,6 +2,8 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import sys  # noqa: E402
+
 import pytest  # noqa: E402
 
 
@@ -66,3 +68,23 @@ def quote(job, settings, catalog):
     from pcc.core.pricing import compute_quote
 
     return compute_quote(job, settings, catalog)
+
+
+@pytest.fixture(autouse=True)
+def _qt_teardown_guard():
+    yield
+    if "PySide6.QtWidgets" not in sys.modules:
+        return
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    from pcc.gui import state as state_mod
+
+    for st in list(state_mod._INSTANCES):
+        try:
+            st.shutdown()
+        except RuntimeError:  # underlying C++ object already deleted
+            pass
+    if QApplication.instance() is not None:
+        QApplication.processEvents()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

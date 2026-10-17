@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import fields as dc_fields
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from pcc.core.storage import load_state, save_catalog, save_settings
 from pcc.core.threemf import ThreeMFError, parse_3mf
 
 SAVE_DELAY_MS = 500
+_INSTANCES: "weakref.WeakSet[AppState]" = weakref.WeakSet()
 _REPAIRED = "Some items used a deleted profile and were switched to the default."
 _PLATE_FIELDS = {f.name for f in dc_fields(Plate)} - {"id"}
 _JOB_FIELDS = {"customer", "printer_id", "packaging"}
@@ -43,6 +45,7 @@ class AppState(QObject):
         self._timer.setSingleShot(True)
         self._timer.setInterval(SAVE_DELAY_MS)
         self._timer.timeout.connect(self._save)
+        _INSTANCES.add(self)
         self.job: Job = self._fresh_job()
         self._compute()
 
@@ -53,6 +56,10 @@ class AppState(QObject):
     def _save(self) -> None:
         save_settings(self.settings, self._directory)
         save_catalog(self.catalog, self._directory)
+
+    def shutdown(self) -> None:
+        """Stop the pending debounced save without writing."""
+        self._timer.stop()
 
     def flush(self) -> None:
         self._timer.stop()

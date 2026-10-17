@@ -87,6 +87,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         QShortcut(QKeySequence.StandardKey.Open, self, activated=self.import_dialog)
         QShortcut(QKeySequence.StandardKey.New, self, activated=self.new_job)
+        QShortcut(QKeySequence("Ctrl+E"), self, activated=self.summary.export_flow.quick_export)
         QShortcut(QKeySequence("Ctrl+,"), self, activated=self.open_settings)
 
         self._refresh_printers()
