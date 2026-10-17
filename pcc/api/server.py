@@ -262,7 +262,7 @@ def create_app(config_directory: Path | None = None) -> FastAPI:
         if not isinstance(body, dict):
             raise ApiError(400, "invalid_request", "Settings must be a JSON object.")
         try:
-            new = settings_from_dict(body)
+            new = settings_from_dict(body, strict=True)
         except (TypeError, ValueError) as e:
             raise ApiError(400, "invalid_request", f"Invalid settings: {e}") from None
         save_settings(new, config_directory)
@@ -278,7 +278,7 @@ def create_app(config_directory: Path | None = None) -> FastAPI:
         if not isinstance(body, dict):
             raise ApiError(400, "invalid_request", "Catalog must be a JSON object.")
         try:
-            new = catalog_from_dict(body)
+            new = catalog_from_dict(body, strict=True)
         except (TypeError, ValueError, AttributeError) as e:
             raise ApiError(400, "invalid_request", f"Invalid catalog: {e}") from None
         if not new.printers or not new.filaments:

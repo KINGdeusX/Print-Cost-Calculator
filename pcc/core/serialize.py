@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, fields
+import math
+from dataclasses import MISSING, asdict, fields
 from datetime import datetime
 from typing import Any, Literal
 
@@ -21,22 +22,78 @@ def _build(cls, d: dict[str, Any], **overrides):
     return cls(**kwargs)
 
 
+_POSITIVE = {(PrinterProfile, "watts")}
+_CHOICES = {(Settings, "theme"): ("system", "light", "dark")}
+
+
+def _valid(cls, name: str, ftype: str, v) -> bool:
+    """Is `v` an acceptable value for field `name` (annotated `ftype`) of `cls`?"""
+    if ftype in ("float", "int"):
+        if isinstance(v, bool) or not isinstance(v, (int, float) if ftype == "float" else int):
+            return False
+        if ftype == "int":
+            return True
+        return math.isfinite(v) and (v > 0 if (cls, name) in _POSITIVE else v >= 0)
+    if ftype == "str":
+        return isinstance(v, str) and v in _CHOICES.get((cls, name), (v,))
+    if ftype == "bool":
+        return isinstance(v, bool)
+    if ftype == "list[str]":
+        return isinstance(v, list) and all(isinstance(x, str) for x in v)
+    return True
+
+
+def _build_checked(cls, d, strict: bool, where: str):
+    """Construct `cls` from `d` with type/range-checked values.
+
+    Lenient: an invalid value takes the field default; an entry whose required
+    field is invalid is dropped (returns None). Strict: raise ValueError.
+    Missing required keys raise TypeError, as with `_build`.
+    """
+    if not isinstance(d, dict):
+        if strict:
+            raise ValueError(f"{where}: must be an object")
+        return None
+    kwargs: dict[str, Any] = {}
+    for f in fields(cls):
+        if f.name not in d:
+            continue
+        v = d[f.name]
+        if _valid(cls, f.name, f.type, v):
+            kwargs[f.name] = float(v) if f.type == "float" else v
+        elif strict:
+            raise ValueError(f"{where}{f.name}: invalid value {v!r}")
+        elif f.default is MISSING and f.default_factory is MISSING:
+            return None
+    return cls(**kwargs)
+
+
+def _entries(d: dict, key: str, cls, strict: bool) -> list:
+    raw = d.get(key, [])
+    if not isinstance(raw, list):
+        if strict:
+            raise ValueError(f"{key}: must be a list")
+        return []
+    built = (_build_checked(cls, e, strict, f"{key}[{i}].") for i, e in enumerate(raw))
+    return [e for e in built if e is not None]
+
+
 def settings_to_dict(s: Settings) -> dict:
     return asdict(s)
 
 
-def settings_from_dict(d: dict) -> Settings:
-    return _build(Settings, d)
+def settings_from_dict(d: dict, strict: bool = False) -> Settings:
+    return _build_checked(Settings, d, strict, "") or Settings()
 
 
 def catalog_to_dict(c: Catalog) -> dict:
     return asdict(c)
 
 
-def catalog_from_dict(d: dict) -> Catalog:
+def catalog_from_dict(d: dict, strict: bool = False) -> Catalog:
     return Catalog(
-        printers=[_build(PrinterProfile, p) for p in d.get("printers", [])],
-        filaments=[_build(Filament, f) for f in d.get("filaments", [])],
+        printers=_entries(d, "printers", PrinterProfile, strict),
+        filaments=_entries(d, "filaments", Filament, strict),
     )
 
 

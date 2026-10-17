@@ -275,3 +275,26 @@ def test_catalog_get_put(admin_client, cfg_dir):
 def test_token_not_echoed(admin_client):
     r = admin_client.get("/api/v1/admin/settings", headers={"Authorization": "Bearer wrong"})
     assert TOKEN not in r.text and "wrong" not in r.text
+
+
+def test_admin_put_settings_rejects_invalid_values(admin_client):
+    s = admin_client.get("/api/v1/admin/settings", headers=AUTH).json()
+    for field, value in (("margin_pct", "x"), ("electricity_rate", None),
+                         ("failure_pct", -10), ("theme", "neon")):
+        r = admin_client.put("/api/v1/admin/settings", json={**s, field: value}, headers=AUTH)
+        assert r.status_code == 400, field
+        assert r.json()["error"]["code"] == "invalid_request"
+        assert field in r.json()["error"]["message"]
+    assert admin_client.get("/api/v1/admin/settings", headers=AUTH).json() == s
+    assert admin_client.post(Q, json=BODY).status_code == 200
+
+
+def test_admin_put_catalog_rejects_invalid_values(admin_client):
+    cat = admin_client.get("/api/v1/admin/catalog", headers=AUTH).json()
+    bad = {**cat, "printers": [{**cat["printers"][0], "watts": "x"}] + cat["printers"][1:]}
+    r = admin_client.put("/api/v1/admin/catalog", json=bad, headers=AUTH)
+    assert r.status_code == 400 and r.json()["error"]["code"] == "invalid_request"
+    bad = {**cat, "filaments": [{**cat["filaments"][0], "price_per_kg": None}]}
+    assert admin_client.put("/api/v1/admin/catalog", json=bad, headers=AUTH).status_code == 400
+    assert admin_client.get("/api/v1/admin/catalog", headers=AUTH).json() == cat
+    assert admin_client.post(Q, json=BODY).status_code == 200

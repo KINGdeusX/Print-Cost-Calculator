@@ -164,3 +164,19 @@ def test_migrate_rejects_non_finite_and_non_positive(cfg_dir, tmp_path):
     assert r.catalog.printers[0].id != "my-printer"
     assert r.settings.margin_pct == 50 and r.settings.electricity_rate == 12
     assert r.settings.default_packaging == 7
+
+
+def test_invalid_values_on_disk_load_defaults(cfg_dir):
+    cfg_dir.mkdir()
+    (cfg_dir / "settings.json").write_text(json.dumps({"margin_pct": "50", "rounding_step": None}))
+    (cfg_dir / "catalog.json").write_text(json.dumps({
+        "printers": [{"id": "x", "name": "X", "watts": "lots"}],
+        "filaments": [{"id": "f", "name": "F", "type": "PLA", "price_per_kg": -1}]}))
+    r = load_state(legacy_paths=[])
+    assert r.settings == default_settings()
+    assert len(r.catalog.printers) == 15 and len(r.catalog.filaments) == 6
+    from pcc.core.models import FilamentUse, Plate, new_job
+    from pcc.core.pricing import compute_quote
+    job = new_job(r.catalog.default_printer().id, 20)
+    job.plates = [Plate(id="a", name="a", hours=1, filaments=[FilamentUse("pla", 10)])]
+    assert compute_quote(job, r.settings, r.catalog).price > 0
