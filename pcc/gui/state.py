@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import weakref
 from dataclasses import fields as dc_fields
 from pathlib import Path
@@ -17,6 +18,8 @@ from pcc.core.storage import load_state, save_catalog, save_settings
 from pcc.core.threemf import ThreeMFError, parse_3mf
 
 SAVE_DELAY_MS = 500
+SAVE_ATTEMPTS = 3
+SAVE_RETRY_DELAY_S = 0.1
 _INSTANCES: "weakref.WeakSet[AppState]" = weakref.WeakSet()
 _REPAIRED = "Some items used a deleted profile and were switched to the default."
 _PLATE_FIELDS = {f.name for f in dc_fields(Plate)} - {"id"}
@@ -54,8 +57,17 @@ class AppState(QObject):
         self._timer.start()
 
     def _save(self) -> None:
-        save_settings(self.settings, self._directory)
-        save_catalog(self.catalog, self._directory)
+        # Windows AV/OneDrive can briefly lock the files: retry, then warn.
+        for attempt in range(SAVE_ATTEMPTS):
+            try:
+                save_settings(self.settings, self._directory)
+                save_catalog(self.catalog, self._directory)
+                return
+            except OSError as e:
+                error = e
+                if attempt + 1 < SAVE_ATTEMPTS:
+                    time.sleep(SAVE_RETRY_DELAY_S)
+        self.warning.emit(f"Could not save settings: {error.strerror or error}")
 
     def shutdown(self) -> None:
         """Stop the pending debounced save without writing."""

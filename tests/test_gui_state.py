@@ -89,3 +89,57 @@ def test_update_job_printer_sets_last(qtbot, cfg_dir):
     assert s.settings.last_printer_id == pid and s.job.customer == "Niño"
     s.new_job()
     assert s.job.printer_id == pid and s.job.plates == []
+
+
+def test_save_error_warns_after_retries(qtbot, cfg_dir, monkeypatch):
+    import pcc.gui.state as state_mod
+    calls = []
+
+    def locked(*a, **k):
+        calls.append(1)
+        raise PermissionError("file is locked")
+
+    monkeypatch.setattr(state_mod, "save_settings", locked)
+    monkeypatch.setattr(state_mod, "SAVE_RETRY_DELAY_S", 0, raising=False)
+    s = AppState(legacy_paths=[])
+    s.update_settings(margin_pct=60)
+    with qtbot.waitSignal(s.warning) as sig:
+        s.flush()  # must not raise
+    assert sig.args[0] == "Could not save settings: file is locked"
+    assert len(calls) == 3
+
+
+def test_debounced_save_error_warns(qtbot, cfg_dir, monkeypatch):
+    import pcc.gui.state as state_mod
+
+    def locked(*a, **k):
+        raise PermissionError("busy")
+
+    monkeypatch.setattr(state_mod, "save_catalog", locked)
+    monkeypatch.setattr(state_mod, "SAVE_RETRY_DELAY_S", 0, raising=False)
+    s = AppState(legacy_paths=[])
+    with qtbot.waitSignal(s.warning, timeout=3000) as sig:
+        s.update_settings(margin_pct=61)
+    assert sig.args[0] == "Could not save settings: busy"
+
+
+def test_transient_save_error_retried(qtbot, cfg_dir, monkeypatch):
+    import pcc.gui.state as state_mod
+    real = state_mod.save_settings
+    calls = []
+
+    def flaky(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise PermissionError("once")
+        return real(*a, **k)
+
+    monkeypatch.setattr(state_mod, "save_settings", flaky)
+    monkeypatch.setattr(state_mod, "SAVE_RETRY_DELAY_S", 0, raising=False)
+    s = AppState(legacy_paths=[])
+    s.update_settings(margin_pct=62)
+    warnings = []
+    s.warning.connect(warnings.append)
+    s.flush()
+    assert warnings == [] and len(calls) == 2
+    assert (cfg_dir / "settings.json").exists()

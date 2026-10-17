@@ -123,3 +123,19 @@ def test_main_timing_smoke(capsys, cfg_dir, monkeypatch):
     err = capsys.readouterr().err
     for stage in ("qt", "splash", "state", "window", "shown"):
         assert f"[timing] {stage}: " in err
+
+
+def test_close_with_locked_settings_does_not_raise(qtbot, cfg_dir, monkeypatch):
+    import pcc.gui.state as state_mod
+
+    def locked(*a, **k):
+        raise PermissionError("locked")
+
+    state, w = make(qtbot)
+    monkeypatch.setattr(state_mod, "save_settings", locked)
+    monkeypatch.setattr(state_mod, "SAVE_RETRY_DELAY_S", 0)
+    seen = []
+    state.warning.connect(seen.append)
+    w.show()
+    assert w.close()
+    assert seen == ["Could not save settings: locked"]
