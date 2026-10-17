@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QApplication, QLabel
 
 from pcc.core.models import Catalog, Filament
 from pcc.gui.dialogs.filaments_dialog import FilamentsDialog
@@ -150,18 +150,51 @@ def test_filament_default_color_duplicate(qtbot, cfg_dir):
     assert state.catalog.default_filament().id == state.catalog.filaments[1].id
 
 
-def test_manage_items_do_not_select(qtbot, cfg_dir, monkeypatch):
+def _printer_window(qtbot, cfg_dir, monkeypatch):
     state = make_state(cfg_dir)
     w = MainWindow(state)
     qtbot.addWidget(w)
     opened = []
     monkeypatch.setattr(MainWindow, "open_printers_dialog", lambda self: opened.append(1))
+    return state, w, opened
+
+
+def test_manage_items_do_not_select(qtbot, cfg_dir, monkeypatch):
+    state, w, opened = _printer_window(qtbot, cfg_dir, monkeypatch)
     c = w.printer_combo
     before = c.currentIndex()
     assert c.itemText(c.count() - 1) == "✏️ Manage printers…"
-    c.setCurrentIndex(c.count() - 1)
+    c.activated.emit(c.count() - 1)  # picked from the popup
     assert opened == [1] and c.currentIndex() == before
     assert state.job.printer_id == state.catalog.printers[before].id
+
+
+def test_manage_printers_not_opened_by_mere_index_change(qtbot, cfg_dir, monkeypatch):
+    state, w, opened = _printer_window(qtbot, cfg_dir, monkeypatch)
+    c = w.printer_combo
+    before = c.currentIndex()
+    c.setCurrentIndex(c.count() - 1)
+    assert opened == []
+    qtbot.waitUntil(lambda: c.currentIndex() == before, timeout=1000)
+    assert state.job.printer_id == state.catalog.printers[before].id
+
+
+def test_manage_printers_not_opened_by_arrow_keys(qtbot, cfg_dir, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    state, w, opened = _printer_window(qtbot, cfg_dir, monkeypatch)
+    w.show()
+    c = w.printer_combo
+    last = len(state.catalog.printers) - 1
+    c.setCurrentIndex(last)
+    assert state.job.printer_id == state.catalog.printers[last].id
+    c.setFocus()
+    QTest.keyClick(c, Qt.Key.Key_Down)  # onto "Manage printers…" (separator skipped)
+    QApplication.processEvents()
+    assert opened == [] and c.currentIndex() == last
+    assert state.job.printer_id == state.catalog.printers[last].id
+    QTest.keyClick(c, Qt.Key.Key_Up)  # arrows still change the printer
+    assert state.job.printer_id == state.catalog.printers[last - 1].id
 
 
 def test_filament_row_manage_item(qtbot, cfg_dir, monkeypatch):
@@ -179,6 +212,29 @@ def test_filament_row_manage_item(qtbot, cfg_dir, monkeypatch):
     cb.activated.emit(cb.count() - 1)
     assert opened == [1] and cb.currentIndex() == cur
     assert state.job.plates[0].filaments[0].filament_id == cb.itemData(cur)
+
+
+def test_filament_manage_not_opened_by_arrow_keys(qtbot, cfg_dir, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from pcc.gui.widgets.plate_card import PlateCard
+    state = make_state(cfg_dir)
+    plate = state.add_plate()
+    card = PlateCard(state, plate.id)
+    qtbot.addWidget(card)
+    card.show()
+    opened = []
+    monkeypatch.setattr(PlateCard, "open_filaments_dialog", lambda self: opened.append(1))
+    cb = card.rows[0].combo
+    last = cb.findData(state.catalog.filaments[-1].id)
+    cb.setCurrentIndex(last)
+    cb.activated.emit(last)
+    cb.setFocus()
+    QTest.keyClick(cb, Qt.Key.Key_Down)
+    QApplication.processEvents()
+    assert opened == [] and cb.currentIndex() == last
+    assert state.job.plates[0].filaments[0].filament_id == state.catalog.filaments[-1].id
 
 
 def test_settings_button_opens_dialog(qtbot, cfg_dir, monkeypatch):

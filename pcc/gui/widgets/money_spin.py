@@ -37,7 +37,31 @@ class GuardedDoubleSpin(_WheelGuard, QDoubleSpinBox):
         no_drops(self)
 
 
-class GuardedCombo(_WheelGuard, QComboBox):
+class StepCombo(QComboBox):
+    """QComboBox that tells arrow-key/wheel stepping apart from a real pick.
+
+    A closed QComboBox emits ``activated`` when stepped with the arrow keys or
+    the wheel; ``stepping`` is True while that happens.
+    """
+
+    stepping = False
+
+    def keyPressEvent(self, event) -> None:
+        self.stepping = True
+        try:
+            super().keyPressEvent(event)
+        finally:
+            self.stepping = False
+
+    def wheelEvent(self, event) -> None:
+        self.stepping = True
+        try:
+            super().wheelEvent(event)
+        finally:
+            self.stepping = False
+
+
+class GuardedCombo(_WheelGuard, StepCombo):
     def __init__(self, *a):
         super().__init__(*a)
         self._guard_init()

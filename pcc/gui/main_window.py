@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtCore import QByteArray, Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog, QLabel,
@@ -18,7 +18,7 @@ from pcc.gui.theme import apply_theme, current_mode, resolve_mode
 from pcc.gui.widgets.banner import Banner
 from pcc.gui.widgets.drop_overlay import DropOverlay
 from pcc.gui.widgets.job_panel import JobPanel
-from pcc.gui.widgets.money_spin import fill_currency_combo
+from pcc.gui.widgets.money_spin import StepCombo, fill_currency_combo
 from pcc.gui.widgets.plates_view import PlatesView
 from pcc.gui.widgets.summary_panel import SummaryPanel
 from pcc.gui.widgets.toast import Toast
@@ -121,7 +121,7 @@ class MainWindow(QMainWindow):
         row.addWidget(self._title_icon)
         row.addWidget(title)
         row.addStretch(1)
-        self.printer_combo = QComboBox()
+        self.printer_combo = StepCombo()
         self.printer_combo.setToolTip("Printer for this job")
         self.printer_combo.setMinimumWidth(200)
         self.currency_combo = QComboBox()
@@ -134,6 +134,7 @@ class MainWindow(QMainWindow):
                   self.theme_button, self.settings_button):
             row.addWidget(w)
         self.printer_combo.currentIndexChanged.connect(self._on_printer)
+        self.printer_combo.activated.connect(self._on_printer_activated)
         self.currency_combo.currentIndexChanged.connect(self._on_currency)
         self.theme_button.clicked.connect(self._cycle_theme)
         self.settings_button.clicked.connect(self.open_settings)
@@ -203,11 +204,22 @@ class MainWindow(QMainWindow):
 
     def _on_printer(self, index: int) -> None:
         pid = self.printer_combo.itemData(index)
-        if pid == _MANAGE:
-            self._sync_printer_selection(force=True)  # never leave the manage item selected
-            self.open_printers_dialog()
+        if pid == _MANAGE:  # a pick from the popup is handled by `activated`
+            QTimer.singleShot(0, self, self._restore_printer_selection)
         elif pid:
             self.state.update_job(printer_id=pid)
+
+    def _restore_printer_selection(self) -> None:
+        if self.printer_combo.currentData() == _MANAGE:
+            self._sync_printer_selection(force=True)  # never leave the manage item selected
+
+    def _on_printer_activated(self, index: int) -> None:
+        c = self.printer_combo
+        if c.itemData(index) != _MANAGE:
+            return
+        self._sync_printer_selection(force=True)
+        if not c.stepping:  # arrow keys / wheel landing on the item must not pop the dialog
+            self.open_printers_dialog()
 
     def _refresh_currency(self) -> None:
         s = self.state.settings

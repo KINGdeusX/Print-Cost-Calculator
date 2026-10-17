@@ -120,7 +120,8 @@ class FilamentRow(QWidget):
             self.combo.blockSignals(True)  # restore, never leave the manage item selected
             self.combo.setCurrentIndex(self.combo.findData(self._current_id))
             self.combo.blockSignals(False)
-            self.card.open_filaments_dialog()
+            if not self.combo.stepping:  # arrow keys / wheel must not pop the dialog
+                self.card.open_filaments_dialog()
             return
         self._current_id = fid
         self.card.edit_use(self.index, filament_id=fid, match="manual")
