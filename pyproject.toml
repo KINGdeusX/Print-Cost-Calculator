@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "print-cost-calculator"
+version = "0.2.0"
+description = "3D-print cost calculator"
+requires-python = ">=3.10"
+dependencies = ["openpyxl>=3.1"]
+
+[project.optional-dependencies]
+gui = ["PySide6-Essentials>=6.7"]
+api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+dev = ["pytest>=8", "pytest-qt>=4.4", "httpx>=0.27", "pyinstaller>=6.6"]
+
+[project.scripts]
+pcc = "pcc.cli:main"
+
+[project.gui-scripts]
+pcc-gui = "pcc.gui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["pcc*"]
+
+[tool.setuptools.package-data]
+pcc = ["assets/**/*"]
+
+[tool.pytest.ini_options]
+qt_api = "pyside6"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient`",
+]
