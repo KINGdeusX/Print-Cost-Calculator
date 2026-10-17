@@ -128,6 +128,13 @@ def _backup(path: Path) -> None:
     os.replace(path, target)
 
 
+def _parse_catalog(data: dict) -> Catalog:
+    c = catalog_from_dict(data)
+    if not c.printers or not c.filaments:
+        raise ValueError("empty catalog")
+    return c
+
+
 def _load_file(path: Path, parse, default, warnings: list[str]):
     if not path.exists():
         return default()
@@ -202,5 +209,5 @@ def load_state(
             save_catalog(c, d)
             return LoadResult(s, c, ["Imported settings from v0.1"])
     settings = _load_file(settings_path, settings_from_dict, default_settings, warnings)
-    catalog = _load_file(d / "catalog.json", catalog_from_dict, default_catalog, warnings)
+    catalog = _load_file(d / "catalog.json", _parse_catalog, default_catalog, warnings)
     return LoadResult(settings, catalog, warnings)

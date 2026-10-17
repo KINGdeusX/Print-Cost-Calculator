@@ -124,3 +124,15 @@ def test_atomic_write_leaves_no_temp(cfg_dir):
     atomic_write_text(target, "héllo")
     assert target.read_text(encoding="utf-8") == "héllo"
     assert [p.name for p in target.parent.iterdir()] == ["a.txt"]
+
+
+def test_empty_catalog_lists_are_corrupt(cfg_dir):
+    cfg_dir.mkdir()
+    fil = {"id": "pla", "name": "PLA", "type": "PLA", "price_per_kg": 1.0}
+    (cfg_dir / "catalog.json").write_text(json.dumps({"printers": [], "filaments": [fil]}))
+    r = load_state(legacy_paths=[])
+    assert len(list(cfg_dir.glob("catalog.json.bak-*"))) == 1
+    assert len(r.catalog.printers) == 15
+    assert r.warnings == [
+        "catalog.json was unreadable; a backup was saved and defaults loaded."
+    ]
