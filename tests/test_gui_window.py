@@ -139,3 +139,23 @@ def test_close_with_locked_settings_does_not_raise(qtbot, cfg_dir, monkeypatch):
     w.show()
     assert w.close()
     assert seen == ["Could not save settings: locked"]
+
+
+def test_timing_measured_from_module_import(capsys, cfg_dir, monkeypatch):
+    import re
+    import time
+
+    from pcc.gui import app as appmod
+
+    monkeypatch.setattr(QApplication, "exec", lambda *a: 0)
+    monkeypatch.setattr(appmod, "_T0", time.perf_counter() - 10.0, raising=False)
+    QApplication.instance() or QApplication([])
+    assert appmod.main(["--timing"]) == 0
+    err = capsys.readouterr().err
+    assert int(re.search(r"\[timing\] qt: (\d+) ms", err).group(1)) >= 10000
+
+
+def test_readme_documents_timing_on_stderr():
+    from pathlib import Path
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    assert "--timing" in readme and "stderr" in readme

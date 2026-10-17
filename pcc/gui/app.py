@@ -1,11 +1,14 @@
 """GUI entry point. Keep module-level imports minimal: startup speed matters."""
 from __future__ import annotations
 
-import os
-import sys
 import time
 
-from PySide6.QtWidgets import QApplication
+_T0 = time.perf_counter()  # before the PySide6 import: --timing is time-to-splash
+
+import os  # noqa: E402
+import sys  # noqa: E402
+
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
 
 def _selftest() -> int:
@@ -23,7 +26,7 @@ def _selftest() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    t0 = time.perf_counter()
+    t0 = _T0
     args = list(sys.argv[1:] if argv is None else argv)
     timing = "--timing" in args
     args = [a for a in args if a != "--timing"]

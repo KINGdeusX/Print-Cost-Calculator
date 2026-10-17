@@ -33,6 +33,7 @@ Grab the latest build from the [Releases](https://github.com/KINGdeusX/Print-Cos
   pip install ".[gui]"
   pcc-gui
   ```
+  `pcc-gui --timing` prints startup times per stage (from launch to splash and window) to stderr. The Windows `.exe` is a windowed app with no console, so run it from source to see them.
 
 ## 💰 How pricing works
 
