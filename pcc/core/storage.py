@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import tempfile
@@ -130,8 +131,11 @@ def _backup(path: Path) -> None:
 
 def _parse_catalog(data: dict) -> Catalog:
     c = catalog_from_dict(data)
-    if not c.printers or not c.filaments:
-        raise ValueError("empty catalog")
+    defaults = default_catalog()
+    if not c.printers:
+        c.printers = defaults.printers
+    if not c.filaments:
+        c.filaments = defaults.filaments
     return c
 
 
@@ -154,8 +158,9 @@ def _load_file(path: Path, parse, default, warnings: list[str]):
         return default()
 
 
-def _num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+def _num(v, positive: bool = False) -> bool:
+    ok = isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    return ok and (v > 0 if positive else True)
 
 
 def _read_legacy(paths: list[Path]) -> dict | None:
@@ -174,14 +179,14 @@ def _read_legacy(paths: list[Path]) -> dict | None:
 def _migrate(legacy: dict) -> tuple[Settings, Catalog]:
     s = default_settings()
     price = legacy.get("filament_cost")
-    c = default_catalog(float(price)) if _num(price) else default_catalog()
+    c = default_catalog(float(price)) if _num(price, True) else default_catalog()
     if _num(legacy.get("packaging")):
         s.default_packaging = float(legacy["packaging"])
     if _num(legacy.get("rate")):
         s.electricity_rate = float(legacy["rate"])
     if _num(legacy.get("margin")):
         s.margin_pct = float(legacy["margin"])
-    if _num(legacy.get("power")):
+    if _num(legacy.get("power"), True):
         c.printers.insert(
             0, PrinterProfile(id="my-printer", name="My Printer",
                               watts=float(legacy["power"])),
@@ -196,7 +201,7 @@ def load_state(
     d = directory or config_dir()
     warnings: list[str] = []
     settings_path = d / "settings.json"
-    if not settings_path.exists():
+    if not settings_path.exists() and not (d / "catalog.json").exists():
         if legacy_paths is None:
             legacy_paths = [
                 Path(sys.executable).parent / "pricing_config.json",

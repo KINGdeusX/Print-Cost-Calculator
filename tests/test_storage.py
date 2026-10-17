@@ -126,13 +126,41 @@ def test_atomic_write_leaves_no_temp(cfg_dir):
     assert [p.name for p in target.parent.iterdir()] == ["a.txt"]
 
 
-def test_empty_catalog_lists_are_corrupt(cfg_dir):
+def test_missing_filaments_filled_from_defaults(cfg_dir):
     cfg_dir.mkdir()
-    fil = {"id": "pla", "name": "PLA", "type": "PLA", "price_per_kg": 1.0}
+    (cfg_dir / "catalog.json").write_text(
+        json.dumps({"printers": [{"id": "x", "name": "X", "watts": 100}]}))
+    r = load_state(legacy_paths=[])
+    assert [p.id for p in r.catalog.printers] == ["x"]
+    assert len(r.catalog.filaments) == 6
+    assert r.warnings == [] and not list(cfg_dir.glob("*.bak-*"))
+
+
+def test_empty_printers_filled_from_defaults(cfg_dir):
+    cfg_dir.mkdir()
+    fil = {"id": "mine", "name": "Mine", "type": "PLA", "price_per_kg": 1.0}
     (cfg_dir / "catalog.json").write_text(json.dumps({"printers": [], "filaments": [fil]}))
     r = load_state(legacy_paths=[])
-    assert len(list(cfg_dir.glob("catalog.json.bak-*"))) == 1
     assert len(r.catalog.printers) == 15
-    assert r.warnings == [
-        "catalog.json was unreadable; a backup was saved and defaults loaded."
-    ]
+    assert [f.id for f in r.catalog.filaments] == ["mine"]
+    assert r.warnings == [] and not list(cfg_dir.glob("*.bak-*"))
+
+
+def test_no_migration_when_catalog_exists(cfg_dir, tmp_path):
+    cfg_dir.mkdir()
+    save_catalog(default_catalog(123.0), cfg_dir)
+    legacy = tmp_path / "pricing_config.json"
+    legacy.write_text(json.dumps({"margin": 40, "power": 200}))
+    r = load_state(legacy_paths=[legacy])
+    assert r.warnings == [] and r.settings.margin_pct == 50
+    assert r.catalog.default_filament().price_per_kg == 123.0
+
+
+def test_migrate_rejects_non_finite_and_non_positive(cfg_dir, tmp_path):
+    legacy = tmp_path / "pricing_config.json"
+    legacy.write_text('{"filament_cost": 0, "power": -5, "margin": Infinity, "rate": NaN, "packaging": 7}')
+    r = load_state(legacy_paths=[legacy])
+    assert r.catalog.default_filament().price_per_kg == 800.0
+    assert r.catalog.printers[0].id != "my-printer"
+    assert r.settings.margin_pct == 50 and r.settings.electricity_rate == 12
+    assert r.settings.default_packaging == 7
