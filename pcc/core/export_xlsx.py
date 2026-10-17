@@ -92,12 +92,16 @@ def _save_atomic(wb, path: Path) -> None:
         raise
 
 
+def report_path(path: Path) -> Path:
+    """The file `export_quote` actually writes for `path` (adds .xlsx)."""
+    path = Path(path)
+    return path if path.suffix.lower() == ".xlsx" else path.with_name(path.name + ".xlsx")
+
+
 def export_quote(path: Path, job: Job, quote: Quote, catalog: Catalog, append: bool) -> Path:
     import openpyxl
 
-    path = Path(path)
-    if path.suffix.lower() != ".xlsx":
-        path = path.with_name(path.name + ".xlsx")
+    path = report_path(path)
     wb = openpyxl.load_workbook(path) if append and path.exists() else openpyxl.Workbook()
     if append and path.exists() and "Jobs" not in wb.sheetnames:
         bak = path.with_name(path.stem + ".bak.xlsx")

@@ -96,7 +96,7 @@ def test_export_disabled_without_quote(qtbot, cfg_dir, monkeypatch):
     state, w = make(qtbot, with_plate=False)
     assert not w.summary.export_button.isEnabled()
     called = []
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: called.append(1) or ("", ""))
+    monkeypatch.setattr(w.summary.export_flow, "_ask_save_path", lambda: called.append(1) or "")
     w.summary.export_flow.quick_export()
     assert called == []
     state.add_plate()
@@ -109,15 +109,9 @@ def test_dialog_actions(qtbot, cfg_dir, tmp_path, monkeypatch):
     state, w = make(qtbot)
     flow = w.summary.export_flow
     p = tmp_path / "n.xlsx"
-    seen = {}
-
-    def save(parent, title, d, flt):
-        seen["save"] = (title, flt)
-        return str(p), flt
-
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", save)
+    monkeypatch.setattr(flow, "_ask_save_path", lambda: str(p))
     flow.new_action.trigger()
-    assert p.exists() and seen["save"] == ("Save report", "Excel (*.xlsx)")
+    assert p.exists()
     monkeypatch.setattr(QFileDialog, "getOpenFileName",
                         lambda parent, t, d, flt: (str(p), flt))
     flow.append_action.trigger()
@@ -139,3 +133,66 @@ def test_ctrl_e_picks_new_or_last(qtbot, cfg_dir, tmp_path, monkeypatch):
     state.update_settings(last_export_path=str(f))
     flow.quick_export()
     assert calls == ["new", "new", "last"]
+
+
+def test_save_dialog_appends_xlsx_suffix(qtbot, cfg_dir, monkeypatch):
+    state, w = make(qtbot)
+    seen = {}
+
+    def fake_exec(self):
+        seen.update(suffix=self.defaultSuffix(), mode=self.acceptMode(),
+                    filters=self.nameFilters(), title=self.windowTitle())
+        return QFileDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(QFileDialog, "exec", fake_exec)
+    assert w.summary.export_flow.new_report() is False
+    assert seen == {"suffix": "xlsx", "mode": QFileDialog.AcceptMode.AcceptSave,
+                    "filters": ["Excel (*.xlsx)"], "title": "Save report"}
+
+
+def _overwrite_setup(qtbot, tmp_path, monkeypatch, answer):
+    no_desktop(monkeypatch)
+    state, w = make(qtbot)
+    flow = w.summary.export_flow
+    target = tmp_path / "report.xlsx"
+    target.write_bytes(b"precious")
+    # The dialog (e.g. a portal on Linux) returns the name without the suffix.
+    monkeypatch.setattr(flow, "_ask_save_path", lambda: str(tmp_path / "report"), raising=False)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                        lambda *a, **k: (str(tmp_path / "report"), "Excel (*.xlsx)"))
+    asked = []
+
+    def question(parent, title, text, *a, **k):
+        asked.append(text)
+        return answer
+
+    monkeypatch.setattr(QMessageBox, "question", question)
+    return flow, target, asked
+
+
+def test_new_report_confirms_overwrite_of_suffixed_path(qtbot, cfg_dir, tmp_path, monkeypatch):
+    flow, target, asked = _overwrite_setup(
+        qtbot, tmp_path, monkeypatch, QMessageBox.StandardButton.No)
+    assert flow.new_report() is False
+    assert target.read_bytes() == b"precious"
+    assert asked == ["report.xlsx already exists. Replace it?"]
+
+
+def test_new_report_overwrite_confirmed(qtbot, cfg_dir, tmp_path, monkeypatch):
+    flow, target, asked = _overwrite_setup(
+        qtbot, tmp_path, monkeypatch, QMessageBox.StandardButton.Yes)
+    assert flow.new_report() is True
+    assert openpyxl.load_workbook(target)["Jobs"].max_row == 2
+    assert len(asked) == 1
+
+
+def test_new_report_no_extra_prompt_when_dialog_confirmed(qtbot, cfg_dir, tmp_path, monkeypatch):
+    no_desktop(monkeypatch)
+    state, w = make(qtbot)
+    flow = w.summary.export_flow
+    target = tmp_path / "r.xlsx"
+    target.write_bytes(b"old")
+    monkeypatch.setattr(flow, "_ask_save_path", lambda: str(target))
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked")))
+    assert flow.new_report() is True

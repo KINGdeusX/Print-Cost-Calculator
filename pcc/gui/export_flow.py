@@ -52,13 +52,35 @@ class ExportFlow(QObject):
     def _parent_widget(self):
         return self.parent()
 
+    def _ask_save_path(self) -> str:
+        dlg = QFileDialog(self._parent_widget(), "Save report", self._start_dir(), _FILTER)
+        dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dlg.setFileMode(QFileDialog.FileMode.AnyFile)
+        dlg.setDefaultSuffix("xlsx")
+        if dlg.exec() != QFileDialog.DialogCode.Accepted:
+            return ""
+        files = dlg.selectedFiles()
+        return files[0] if files else ""
+
     # -- actions ------------------------------------------------------
     def new_report(self) -> bool:
         if self.state.quote is None:
             return False
-        name, _ = QFileDialog.getSaveFileName(
-            self._parent_widget(), "Save report", self._start_dir(), _FILTER)
-        return bool(name) and self.export(Path(name), append=False)
+        from pcc.core.export_xlsx import report_path
+
+        name = self._ask_save_path()
+        if not name:
+            return False
+        path = report_path(Path(name))
+        # Some (portal) dialogs ignore the default suffix, so their overwrite
+        # prompt checked a different name than the one we write.
+        if path != Path(name) and path.exists():
+            answer = QMessageBox.question(
+                self._parent_widget(), "Replace file?",
+                f"{path.name} already exists. Replace it?")
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+        return self.export(path, append=False)
 
     def append_existing(self) -> bool:
         if self.state.quote is None:
