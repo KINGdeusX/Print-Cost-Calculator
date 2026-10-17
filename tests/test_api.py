@@ -324,3 +324,16 @@ def test_admin_quote_allows_empty_plates(admin_client):
     empty = {"name": "probe", "hours": 0, "copies": 1, "filaments": []}
     r = admin_client.post(Q, json={**BODY, "plates": [empty]}, headers=AUTH)
     assert r.status_code == 200
+
+
+def test_json_quote_without_printer_uses_last_printer(admin_client):
+    s = admin_client.get("/api/v1/admin/settings", headers=AUTH).json()
+    base = admin_client.post(Q, json=BODY, headers=AUTH, params={"view": "internal"}).json()
+    s["last_printer_id"] = "bambu-h2d"  # 240 W vs the default printer's 80 W
+    assert admin_client.put("/api/v1/admin/settings", json=s, headers=AUTH).status_code == 200
+    r = admin_client.post(Q, json=BODY, headers=AUTH, params={"view": "internal"}).json()
+    assert r["lines"]["electricity"] > base["lines"]["electricity"]
+    s["last_printer_id"] = "gone"
+    admin_client.put("/api/v1/admin/settings", json=s, headers=AUTH)
+    r = admin_client.post(Q, json=BODY, headers=AUTH, params={"view": "internal"}).json()
+    assert r["lines"]["electricity"] == base["lines"]["electricity"]

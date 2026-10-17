@@ -191,7 +191,10 @@ def create_app(config_directory: Path | None = None) -> FastAPI:
 
     def job_from_request(body: QuoteRequest, admin: bool) -> Job:
         settings, catalog = app.state.settings, app.state.catalog
-        printer_id = body.printer_id or catalog.default_printer().id
+        printer_id = body.printer_id
+        if not printer_id:  # same fallback as the CLI/GUI
+            last = settings.last_printer_id
+            printer_id = last if last and catalog.printer(last) else catalog.default_printer().id
         packaging = (
             body.packaging if admin and body.packaging is not None
             else settings.default_packaging
