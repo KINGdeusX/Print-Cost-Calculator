@@ -1,4 +1,8 @@
 """Projects list: row interaction (mouse, context menu, keys) and refresh policy."""
+import os
+import sys
+
+import pytest
 from PySide6.QtCore import QFile, QTimer, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
@@ -131,12 +135,7 @@ def test_keys_without_current_row_do_nothing(qtbot, cfg_dir, data_dir, monkeypat
     assert called == []
 
 
-# -- data folder that cannot be created (item 2) -----------------------------
-import os  # noqa: E402
-import sys  # noqa: E402
-
-import pytest  # noqa: E402
-
+# -- data folder that cannot be created -------------------------------------
 needs_posix_perms = pytest.mark.skipif(
     sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
     reason="needs POSIX permissions and a non-root user")
@@ -179,7 +178,7 @@ def test_app_starts_without_data_folder(qtbot, cfg_dir, readonly_data_dir, monke
     assert not readonly_data_dir.exists()
 
 
-# -- refresh policy (item 4) -------------------------------------------------
+# -- refresh policy ---------------------------------------------------------
 class _Calls(list):
     thumbs: list
 
