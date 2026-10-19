@@ -25,6 +25,15 @@ def _selftest() -> int:
     return 0
 
 
+def wire_session(app, window, state) -> None:
+    """Logoff/shutdown and quit must not lose a dirty project or pending settings."""
+    from PySide6.QtCore import Qt
+
+    # Qt asks for a direct connection: the session manager is only valid in the call
+    app.commitDataRequest.connect(window.commit_session, Qt.ConnectionType.DirectConnection)
+    app.aboutToQuit.connect(state.flush)
+
+
 def main(argv: list[str] | None = None) -> int:
     t0 = _T0
     args = list(sys.argv[1:] if argv is None else argv)
@@ -65,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     from pcc.gui.main_window import MainWindow
 
     window = MainWindow(state)
+    wire_session(app, window, state)
     mark("window")
 
     window.show()

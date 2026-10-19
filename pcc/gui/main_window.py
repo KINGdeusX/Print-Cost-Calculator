@@ -570,6 +570,21 @@ class MainWindow(QMainWindow):
             if screen is not None:
                 self.move(screen.availableGeometry().center() - self.rect().center())
 
+    def commit_session(self, manager) -> None:
+        """Logoff/shutdown (QGuiApplication.commitDataRequest): offer to save a
+        dirty project (Cancel cancels the shutdown) and persist settings."""
+        try:
+            self.header.commit_name()
+            if self.state.dirty and self.state.project is not None \
+                    and manager.allowsInteraction():
+                try:
+                    if not self.confirm_leave():
+                        manager.cancel()
+                finally:
+                    manager.release()
+        finally:
+            self.state.flush()
+
     def closeEvent(self, event) -> None:
         if not self.confirm_leave():
             event.ignore()
