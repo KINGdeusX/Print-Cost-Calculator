@@ -32,7 +32,7 @@ def test_sorted_by_updated_desc(data_dir, job):
     assert [x.project.name for x in list_projects()[0]] == ["A", "B"]
 
 
-@pytest.mark.parametrize("name", ['a/b:c*?', "CON", "nul.txt", "x. ", "é" * 200, "🎉 order"])
+@pytest.mark.parametrize("name", ['a/b:c*?', "CON", "nul.txt", "x. ", "é" * 200, "🎉 order", "🎉" * 60])
 def test_unsafe_names(data_dir, job, name):
     h = create_project(name, job)
     assert h.path.is_dir() and load_project(h.path).name == name
@@ -102,3 +102,57 @@ def test_deleted_plate_thumb_removed(data_dir, job):
     p = load_project(h.path)
     save_project(h.path, replace(p, job=replace(p.job, plates=[])), None)
     assert not (h.path / "thumbs" / f"{pid}.png").exists()
+
+
+@pytest.mark.parametrize("data", [
+    '{"job": "x"}', '{"job": [1]}',
+    '{"id":"a","name":"n","created_at":"2026-01-01T00:00:00","updated_at":"u",'
+    '"job":{"created_at":"2026-01-01T00:00:00","plates":["x"]}}',
+    '{"id":"a","name":"n","created_at":"2026-01-01T00:00:00","updated_at":"u",'
+    '"job":{"created_at":"2026-01-01T00:00:00","plates":[null]}}',
+])
+def test_malformed_shapes_skipped(data_dir, job, data):
+    bad = projects_dir() / "odd"
+    bad.mkdir()
+    (bad / "project.json").write_text(data, encoding="utf-8")
+    handles, warnings = list_projects()
+    assert handles == [] and warnings == ["odd: could not be read"]
+    with pytest.raises(ProjectError):
+        load_project(bad)
+
+
+def test_save_missing_file_conflicts_unless_forced(data_dir, job):
+    h = create_project("P", job)
+    p = load_project(h.path)
+    (h.path / "project.json").unlink()
+    with pytest.raises(ProjectConflictError):
+        save_project(h.path, p, p.updated_at)
+    assert not (h.path / "project.json").exists()
+    save_project(h.path, p, None)
+    assert (h.path / "project.json").exists()
+
+
+def test_evil_plate_id_writes_nothing_outside_thumbs(data_dir, job):
+    job.plates[0].id = "../evil"
+    job.plates[0].thumbnail_png = PNG_1x1
+    h = create_project("E", job)
+    assert not (h.path / "evil.png").exists()
+    assert list(h.path.rglob("*.png")) == []
+
+
+def test_thumbnail_none_keeps_existing_file(data_dir, job):
+    job.plates[0].thumbnail_png = PNG_1x1
+    h = create_project("K", job)
+    p = list_projects()[0][0].project          # thumbnails not loaded
+    save_project(h.path, p, None)
+    assert load_project(h.path).job.plates[0].thumbnail_png == PNG_1x1
+
+
+def test_create_never_overwrites_existing_folder(data_dir, job, monkeypatch):
+    import pcc.core.projects as pr
+    first = create_project("Same", job)
+    ids = iter([first_id := load_project(first.path).id, first_id, "proj-fresh0001"])
+    monkeypatch.setattr(pr, "new_id", lambda prefix: next(ids))
+    second = create_project("Same", job)
+    assert second.path != first.path and second.project.id == "proj-fresh0001"
+    assert load_project(first.path).id == first_id

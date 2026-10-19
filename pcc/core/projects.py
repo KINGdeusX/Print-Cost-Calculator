@@ -19,7 +19,8 @@ from pcc.core.storage import atomic_write_text
 _ONE_US = timedelta(microseconds=1)
 PROJECT_FILE = "project.json"
 THUMBS_DIR = "thumbs"
-_LOAD_ERRORS = (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError)
+_LOAD_ERRORS = (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError,
+                AttributeError, RecursionError)
 _RESERVED = {"CON", "PRN", "AUX", "NUL",
              *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -67,7 +68,8 @@ def _now() -> str:
 def safe_name(name: str) -> str:
     s = _ILLEGAL.sub("", name)
     s = " ".join(s.split())
-    s = s[:60].rstrip(". ")
+    s = s[:60]
+    s = s.encode("utf-8")[:100].decode("utf-8", "ignore").rstrip(". ")
     stem, dot, ext = s.partition(".")
     if stem.rstrip(" ").upper() in _RESERVED:
         s = stem + "_" + dot + ext
@@ -139,6 +141,10 @@ def _write(path: Path, project: Project) -> None:
                 pass
             _write_bytes_atomic(tp, plate.thumbnail_png)
         # thumbnail None: keep any existing file (not loaded, e.g. from list)
+    atomic_write_text(
+        path / PROJECT_FILE,
+        json.dumps(_to_dict(project), ensure_ascii=False, indent=2),
+    )
     tdir = path / THUMBS_DIR
     plate_ids = {pl.id for pl in project.job.plates}
     if tdir.is_dir():
@@ -148,10 +154,6 @@ def _write(path: Path, project: Project) -> None:
                     f.unlink()
                 except OSError:
                     pass
-    atomic_write_text(
-        path / PROJECT_FILE,
-        json.dumps(_to_dict(project), ensure_ascii=False, indent=2),
-    )
 
 
 # -- public API ---------------------------------------------------------------
@@ -178,11 +180,17 @@ def list_projects(root: Path | None = None) -> tuple[list[ProjectHandle], list[s
 def create_project(name: str, job: Job, root: Path | None = None) -> ProjectHandle:
     root = root or projects_dir()
     now = _now()
-    project = Project(id=new_id("proj"), name=name, created_at=now,
-                      updated_at=now, job=job)
-    folder = root / f"{now[:10]} {safe_name(name)} ({project.id[-6:]})"
-    _write(folder, project)
-    return ProjectHandle(folder, project)
+    for _ in range(5):
+        project = Project(id=new_id("proj"), name=name, created_at=now,
+                          updated_at=now, job=job)
+        folder = root / f"{now[:10]} {safe_name(name)} ({project.id[-6:]})"
+        try:
+            folder.mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
+            continue
+        _write(folder, project)
+        return ProjectHandle(folder, project)
+    raise ProjectError(f"could not create a folder for '{name}'")
 
 
 def load_project(path: Path) -> Project:
@@ -208,7 +216,10 @@ def save_project(path: Path, project: Project,
     on-disk `updated_at` differs from `expected_updated_at` (None = force).
     """
     old = ""
-    if (path / PROJECT_FILE).exists():
+    if not (path / PROJECT_FILE).exists():
+        if expected_updated_at is not None:
+            raise ProjectConflictError(f"{path.name}: deleted elsewhere")
+    else:
         try:
             old = _read(path).updated_at
         except _LOAD_ERRORS:
