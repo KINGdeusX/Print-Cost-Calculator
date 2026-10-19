@@ -9,7 +9,8 @@ from PySide6.QtCore import QFile, Qt, QSize, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMenu, QMessageBox, QPushButton, QToolButton, QVBoxLayout, QWidget,
+    QMenu, QMessageBox, QPushButton, QStackedWidget, QToolButton, QVBoxLayout,
+    QWidget,
 )
 
 from pcc.core.currency import format_money
@@ -178,11 +179,14 @@ class ProjectsPage(QWidget):
         self.list_widget.customContextMenuRequested.connect(self._context_menu)
         self.list_widget.rename_key.connect(lambda: self._on_current(self.rename_project))
         self.list_widget.delete_key.connect(lambda: self._on_current(self.delete_project))
-        state.projects_changed.connect(self.refresh)
-        state.settings_changed.connect(self.refresh)
-        state.catalog_changed.connect(self.refresh)
+        # Disk scans only while the list is on screen; entering the page
+        # (show_projects) always re-reads, so hidden changes need no tracking.
         # No scan here: the owner calls refresh() when the page is shown, after
         # it has connected warnings_found (else startup warnings are lost).
+        self._rows: list[tuple[ProjectHandle, ProjectRow]] = []
+        state.projects_changed.connect(self._on_projects_changed)
+        state.settings_changed.connect(self._reprice)
+        state.catalog_changed.connect(self._reprice)
 
     # -- content ------------------------------------------------------
     def _price(self, handle: ProjectHandle) -> str:
@@ -194,11 +198,27 @@ class ProjectsPage(QWidget):
             return "—"
         return format_money(q.price, self.state.settings.currency_symbol)
 
+    def _on_screen(self) -> bool:
+        stack = self.parentWidget()
+        return not isinstance(stack, QStackedWidget) or stack.currentWidget() is self
+
+    def _on_projects_changed(self) -> None:
+        if self._on_screen():
+            self.refresh()
+
+    def _reprice(self) -> None:
+        """Settings/catalog changed: update prices of the loaded rows (no disk read)."""
+        if not self._on_screen():
+            return
+        for handle, row in self._rows:
+            row.price_label.setText(self._price(handle))
+
     def refresh(self) -> None:
         handles, warnings = list_projects()
         lw = self.list_widget
         lw.clear()
         self._names = {}
+        self._rows = []
         for h in handles:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, h.path)
@@ -211,6 +231,7 @@ class ProjectsPage(QWidget):
             lw.addItem(item)
             lw.setItemWidget(item, row)
             self._names[h.path] = h.project.name
+            self._rows.append((h, row))
         self._apply_filter()
         if warnings != self._last_warnings:  # a dismissed banner stays dismissed
             self._last_warnings = list(warnings)

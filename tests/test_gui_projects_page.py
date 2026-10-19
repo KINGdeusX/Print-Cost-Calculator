@@ -177,3 +177,78 @@ def test_app_starts_without_data_folder(qtbot, cfg_dir, readonly_data_dir, monke
     d.open_data_folder_button.click()  # must not raise
     assert len(opened) == 1
     assert not readonly_data_dir.exists()
+
+
+# -- refresh policy (item 4) -------------------------------------------------
+class _Calls(list):
+    thumbs: list
+
+
+@pytest.fixture
+def scans(monkeypatch):
+    calls = _Calls()
+    real = page_mod.list_projects
+
+    def spy(*a, **k):
+        calls.append(1)
+        return real(*a, **k)
+    monkeypatch.setattr(page_mod, "list_projects", spy)
+    thumbs = []
+    real_thumb = page_mod._first_thumbnail
+    monkeypatch.setattr(page_mod, "_first_thumbnail",
+                        lambda h: thumbs.append(1) or real_thumb(h))
+    calls.thumbs = thumbs
+    return calls
+
+
+def test_startup_scans_once(qtbot, cfg_dir, data_dir, scans):
+    make(qtbot)
+    assert len(scans) == 1
+
+
+def test_hidden_list_is_not_rescanned(qtbot, cfg_dir, data_dir, scans):
+    state, w = make(qtbot)
+    state.new_project("Edit")
+    state.add_plate()
+    scans.clear()
+    state.update_settings(margin_pct=state.settings.margin_pct + 5)
+    state.set_catalog(state.catalog)
+    state.save_project()  # projects_changed while the editor is shown
+    assert scans == []
+    w.go_back()
+    assert w.stack.currentWidget() is w.projects_page
+    assert len(scans) == 1
+
+
+def test_visible_list_reprices_without_disk_read(qtbot, cfg_dir, data_dir, scans):
+    from pcc.core.currency import format_money
+    from pcc.core.pricing import compute_quote
+
+    state, w = make(qtbot)
+    state.new_project("Priced")
+    state.add_plate()
+    state.update_plate(state.job.plates[0].id, hours=2.0)
+    state.save_project()
+    w.go_back()
+    row = w.projects_page.list_widget.itemWidget(w.projects_page.list_widget.item(0))
+    del scans[:]
+    scans.thumbs.clear()
+    state.update_settings(margin_pct=state.settings.margin_pct + 25)
+    state.set_catalog(state.catalog)
+    assert scans == [] and scans.thumbs == []
+    job = load_project(list_projects()[0][0].path).job
+    want = format_money(compute_quote(job, state.settings, state.catalog).price,
+                        state.settings.currency_symbol)
+    assert row.price_label.text() == want
+
+
+def test_list_page_actions_rescan(qtbot, cfg_dir, data_dir, scans, monkeypatch):
+    state, w = make(qtbot)
+    path = state.new_project("Act")
+    state.close_project()
+    del scans[:]
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Act2", True))
+    w.projects_page.rename_project(path)
+    assert len(scans) == 1
+    w.projects_page.duplicate_project(path)
+    assert len(scans) == 2 and w.projects_page.list_widget.count() == 2
