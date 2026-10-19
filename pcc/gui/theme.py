@@ -59,6 +59,10 @@ QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QWidget:disabled {{ color: {c['dis_text']}; }}
 QLabel {{ background: transparent; }}
 QLabel[muted="true"] {{ color: {c['text_muted']}; }}
+QLabel[role="title"] {{ font-size: 15pt; font-weight: 700; }}
+QLabel[thumb="true"] {{ background: {c['surface2']}; border: 1px solid {c['border']}; border-radius: 6px; }}
+QToolButton[role="more"] {{ font-size: 16pt; font-weight: 700; padding: 0; }}
+QLabel[dirty="true"] {{ color: {c['accent']}; font-weight: 600; }}
 QLabel[role="price"] {{ font-size: 28px; font-weight: 700; }}
 QFrame[card="true"] {{ background: {c['surface']}; border: 1px solid {c['border']}; border-radius: 8px; }}
 QFrame[card="true"] QLabel {{ background: transparent; border: none; }}

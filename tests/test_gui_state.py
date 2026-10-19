@@ -87,7 +87,7 @@ def test_update_job_printer_sets_last(qtbot, cfg_dir):
     pid = s.catalog.printers[-1].id
     s.update_job(printer_id=pid, customer="Niño")
     assert s.settings.last_printer_id == pid and s.job.customer == "Niño"
-    s.new_job()
+    s.new_project()
     assert s.job.printer_id == pid and s.job.plates == []
 
 

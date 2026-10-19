@@ -95,3 +95,15 @@ def _qt_teardown_guard():
     if QApplication.instance() is not None:
         QApplication.processEvents()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture(autouse=True)
+def _no_blocking_save_prompt(monkeypatch):
+    """qtbot closes windows at teardown; a dirty project would raise a modal
+    'Save changes?' prompt and hang the run. Tests that care patch it again."""
+    if "PySide6.QtWidgets" not in sys.modules:
+        return
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: QMessageBox.StandardButton.Discard)

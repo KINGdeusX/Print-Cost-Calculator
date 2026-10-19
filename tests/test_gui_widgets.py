@@ -9,9 +9,12 @@ from tests.fixtures.make3mf import MULTI_PLATE_PROJECT
 
 
 def make_window(qtbot):
-    w = MainWindow(AppState(legacy_paths=[]))
+    state = AppState(legacy_paths=[])
+    state.new_project()
+    w = MainWindow(state)
     qtbot.addWidget(w)
     w.show()
+    w.show_editor()
     return w
 
 
@@ -139,29 +142,6 @@ def test_rapid_edits_keep_widgets_and_focus(qtbot, cfg_dir, tmp_path):
     assert w.state.job.plates[0].filaments[0].grams == 12.5
     assert w.plates_view.cards() == cards
     assert [list(c.rows) for c in w.plates_view.cards()] == rows
-
-
-def test_new_job_confirmation(qtbot, cfg_dir, monkeypatch):
-    w = make_window(qtbot)
-    w.state.add_plate()
-    monkeypatch.setattr(QMessageBox, "question",
-                        lambda *a, **k: QMessageBox.StandardButton.No)
-    w.new_job()
-    assert len(w.state.job.plates) == 1
-    monkeypatch.setattr(QMessageBox, "question",
-                        lambda *a, **k: QMessageBox.StandardButton.Yes)
-    w.new_job()
-    assert w.state.job.plates == []
-    assert w.plates_view.cards() == []
-
-
-def test_new_job_without_plates_does_not_ask(qtbot, cfg_dir, monkeypatch):
-    w = make_window(qtbot)
-
-    def boom(*a, **k):
-        raise AssertionError("should not ask")
-    monkeypatch.setattr(QMessageBox, "question", boom)
-    w.new_job()
 
 
 def test_banner_levels_and_dismiss(qtbot, cfg_dir, tmp_path):

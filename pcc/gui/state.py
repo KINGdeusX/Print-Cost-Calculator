@@ -121,11 +121,6 @@ class AppState(QObject):
         if self.project is not None:
             self._set_dirty(True)
 
-    def new_job(self) -> None:
-        self.job = self._fresh_job()
-        self.job_changed.emit()
-        self.recalc()
-
     def _blank_plate(self) -> Plate:
         return Plate(
             id=new_id("plate"), name=f"Plate {len(self.job.plates) + 1}", hours=0.0,

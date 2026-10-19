@@ -117,13 +117,6 @@ def test_rename_marks_dirty(qtbot, cfg_dir, data_dir):
     assert load_project(s.project_path).name == "New"
 
 
-def test_new_job_still_works(qtbot, cfg_dir, data_dir):
-    s = AppState(legacy_paths=[])
-    s.add_plate()
-    s.new_job()
-    assert s.job.plates == []
-
-
 def test_record_invoice_save_failure_keeps_record_and_dirty(qtbot, cfg_dir, data_dir, monkeypatch):
     from pcc.gui import state as state_mod
     s = AppState(legacy_paths=[])
