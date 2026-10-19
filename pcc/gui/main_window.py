@@ -304,7 +304,7 @@ class MainWindow(QMainWindow):
             return
         path = dlg.created_path
         self.toast.show_toast(
-            f"🧾 Saved {dlg.number_edit.text().strip()}",
+            f"🧾 Saved {dlg.created_number}",
             [("Open", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))),
              ("Show in folder", lambda: QDesktopServices.openUrl(
                  QUrl.fromLocalFile(str(path.parent))))])

@@ -291,8 +291,9 @@ class AppState(QObject):
     def record_invoice(self, record: InvoiceRecord) -> None:
         if self.project is None:
             return
-        self.project = replace(self.project,
-                               invoices=[*self.project.invoices, record])
+        kept = [r for r in self.project.invoices
+                if not (r.number == record.number and r.file == record.file)]
+        self.project = replace(self.project, invoices=[*kept, record])
         self._set_dirty(True)  # stays dirty if the save below raises
         self.save_project()
 

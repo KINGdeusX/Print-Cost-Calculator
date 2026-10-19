@@ -25,13 +25,13 @@ def default_invoice_number(settings: Settings) -> str:
 
 
 def invoice_file_path(number: str, bill_to: str, project_name: str) -> Path:
-    return invoices_dir() / f"{number} - {safe_name(bill_to or project_name)}.pdf"
+    return invoices_dir() / f"{safe_name(number)} - {safe_name(bill_to or project_name)}.pdf"
 
 
 def invoice_exists(number: str) -> bool:
-    d = invoices_dir()
+    d, stem = invoices_dir(), safe_name(number)
     return any(
-        p.name == f"{number}.pdf" or p.name.startswith(f"{number} ")
+        p.name == f"{stem}.pdf" or p.name.startswith(f"{stem} ")
         for p in d.glob("*.pdf")
     )
 
@@ -43,6 +43,7 @@ class InvoiceDialog(QDialog):
         self.setWindowTitle("🧾 Invoice")
         self.setMinimumWidth(380)
         self.created_path: Path | None = None
+        self.created_number: str | None = None
         self.number_edit = QLineEdit(default_invoice_number(state.settings))
         self.number_edit.setToolTip("Invoice number")
         self.date_edit = QDateEdit(QDate.currentDate())
@@ -101,6 +102,7 @@ class InvoiceDialog(QDialog):
         if m and int(m.group(1)) >= state.settings.next_invoice_number:
             state.update_settings(next_invoice_number=int(m.group(1)) + 1)
         self.created_path = path
+        self.created_number = number
         return path
 
     def _render(self, path, number, date, bill_to, lines) -> bool:

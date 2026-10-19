@@ -308,3 +308,36 @@ def test_visual_sample(qtbot, cfg_dir, data_dir, monkeypatch, tmp_path):
     path = dialog(qtbot, w).issue()
     subprocess.run(["pdftoppm", "-png", "-r", "70", "-f", "1", "-l", "1", "-singlefile",
                     str(path), out], check=True)
+
+
+def test_retry_after_failed_save_keeps_one_record(qtbot, cfg_dir, data_dir, monkeypatch):
+    from pcc.core.projects import load_project
+    state, w = make(qtbot)
+    real = state.save_project
+    fail = [True]
+
+    def save(force=False):
+        if fail.pop() if fail else False:
+            raise OSError(28, "No space")
+        real(force=force)
+
+    monkeypatch.setattr(state, "save_project", save)
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: Yes)
+    d = dialog(qtbot, w)
+    assert d.issue() is None
+    assert d.issue() is not None
+    assert len(state.project.invoices) == 1
+    assert len(load_project(state.project_path).invoices) == 1
+
+
+@pytest.mark.parametrize("number", ["a/b", "../x", 'Q:1*"?'])
+def test_number_sanitized_in_filename(qtbot, cfg_dir, data_dir, number):
+    state, w = make(qtbot)
+    d = dialog(qtbot, w)
+    d.number_edit.setText(number)
+    path = d.issue()
+    assert path is not None and path.parent == invoices_dir() and path.exists()
+    assert not set('/\\:*?"') & set(path.name)
+    assert state.project.invoices[-1].number == number
+    assert invoice_exists(number)
