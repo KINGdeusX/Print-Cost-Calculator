@@ -21,8 +21,51 @@ def _selftest() -> int:
     if app_icon().isNull():
         print("selftest FAILED: app icon is null", file=sys.stderr)
         return 1
+    problem = _selftest_logo_and_invoice()
+    if problem:
+        print(f"selftest FAILED: {problem}", file=sys.stderr)
+        return 1
     print("selftest ok")
     return 0
+
+
+def _selftest_logo_and_invoice() -> str | None:
+    """JPEG encode/decode (imageformat plugins) and PDF output work in the bundle."""
+    import datetime
+    import tempfile
+    from decimal import Decimal
+    from pathlib import Path
+
+    from PySide6.QtGui import QColor, QImage
+
+    from pcc.core.invoice import InvoiceLine
+    from pcc.gui import invoice_pdf, logo
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "logo.png"
+        img = QImage(8, 8, QImage.Format.Format_RGB32)
+        img.fill(QColor("orange"))
+        if not img.save(str(src), "PNG"):
+            return "could not write a PNG"
+        try:
+            jpeg = logo.load_logo_image(src)
+        except logo.LogoError as e:
+            return f"logo: {e}"
+        if QImage.fromData(jpeg).isNull():
+            return "logo: JPEG does not decode"
+        pdf = Path(tmp) / "invoice.pdf"
+        try:
+            invoice_pdf.render_invoice_pdf(
+                pdf, company_name="Selftest", logo_jpeg=jpeg, number="INV-0001",
+                date=datetime.date.today(), bill_to="",
+                lines=[InvoiceLine("Print", 1, Decimal("1.00"), Decimal("1.00"))],
+                currency_symbol="$")
+            ok = pdf.read_bytes()[:4] == b"%PDF"
+        except OSError:
+            ok = False
+        if not ok:
+            return "invoice PDF was not written"
+    return None
 
 
 def wire_session(app, window, state) -> None:

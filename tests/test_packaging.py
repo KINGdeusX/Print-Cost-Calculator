@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 import pcc
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,11 +42,33 @@ def test_version_is_readable():
 
 
 def test_selftest_runs_unfrozen(qapp, capsys, monkeypatch):
-    from pcc.gui import app
+    from pcc.gui import app, invoice_pdf
 
+    rendered = []
+    real = invoice_pdf.render_invoice_pdf
+
+    def spy(path, **kw):
+        real(path, **kw)
+        rendered.append((Path(path).read_bytes()[:4], kw["logo_jpeg"][:2]))
+    monkeypatch.setattr(invoice_pdf, "render_invoice_pdf", spy)
     monkeypatch.setenv("PCC_SELFTEST", "1")
     assert app.main([]) == 0
     assert "selftest ok" in capsys.readouterr().out
+    assert rendered == [(b"%PDF", b"\xff\xd8")]  # a PDF with a real JPEG logo
+
+
+@pytest.mark.parametrize("broken", ["jpeg", "pdf"])
+def test_selftest_fails_without_image_plugins_or_pdf(qapp, capsys, monkeypatch, broken):
+    from pcc.gui import app, invoice_pdf, logo
+
+    if broken == "jpeg":
+        monkeypatch.setattr(logo, "load_logo_image",
+                            lambda p: (_ for _ in ()).throw(logo.LogoError("no jpeg")))
+    else:
+        monkeypatch.setattr(invoice_pdf, "render_invoice_pdf", lambda path, **kw: None)
+    monkeypatch.setenv("PCC_SELFTEST", "1")
+    assert app.main([]) == 1
+    assert "selftest FAILED" in capsys.readouterr().err
 
 
 def test_workflows_present():
