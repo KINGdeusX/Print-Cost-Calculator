@@ -1,12 +1,17 @@
 """Settings: costs, pricing and appearance."""
 from __future__ import annotations
 
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QImage, QPalette, QPixmap
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFormLayout, QFrame, QInputDialog, QLabel,
-    QVBoxLayout,
+    QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
+    QInputDialog, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout,
+    QWidget,
 )
 
 from pcc.core.currency import CURRENCIES
+from pcc.core.paths import projects_dir
+from pcc.gui import logo
 from pcc.gui.icons import app_icon
 from pcc.gui.widgets.money_spin import (
     GuardedCombo, GuardedDoubleSpin, MoneySpin, fill_currency_combo,
@@ -14,6 +19,8 @@ from pcc.gui.widgets.money_spin import (
 
 HIDDEN_FEE_HELP = "Added to each plate's price after margin. Never shown in exports."
 _ROUNDING = (0, 1, 5, 10, 50, 100)
+_LOGO_BOX = 150
+_MAX_BODY_HEIGHT = 620
 _THEMES = (("System", "system"), ("Light", "light"), ("Dark", "dark"))
 
 
@@ -34,14 +41,16 @@ def _percent_spin(tip: str) -> GuardedDoubleSpin:
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, state, parent=None):
+    def __init__(self, state, parent=None, focus_company: bool = False):
         super().__init__(parent)
         self.state = state
         s = state.settings
         self._currency = (s.currency_code, s.currency_symbol)
+        self._pending_logo: bytes | None = None
+        self._remove_logo = False
         self.setWindowTitle("Settings")
         self.setWindowIcon(app_icon())
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(580)
 
         self.rate_spin = MoneySpin()
         self.rate_spin.setToolTip("What you pay for electricity per kilowatt-hour")
@@ -66,8 +75,60 @@ class SettingsDialog(QDialog):
         self.currency_combo = GuardedCombo()
         self.currency_combo.setToolTip("Currency used for all prices")
 
-        col = QVBoxLayout(self)
+        self.company_edit = QLineEdit()
+        self.company_edit.setPlaceholderText("Shown on your invoices")
+        self.company_edit.setToolTip("Your business name, printed on invoices")
+        self.logo_preview = QLabel()
+        self.logo_preview.setFixedSize(_LOGO_BOX, _LOGO_BOX)
+        self.logo_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.logo_preview.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        self.logo_preview.setStyleSheet(
+            "border: 1px solid rgba(128, 128, 128, 90); border-radius: 6px;")
+        self.logo_upload_button = QPushButton("Upload…")
+        self.logo_upload_button.setToolTip("Choose an image to print on invoices")
+        self.logo_upload_button.clicked.connect(self._upload_logo)
+        self.logo_remove_button = QPushButton("Remove")
+        self.logo_remove_button.setToolTip("Stop printing a logo on invoices")
+        self.logo_remove_button.clicked.connect(self._remove_logo_clicked)
+        self.logo_error_label = QLabel()
+        self.logo_error_label.setStyleSheet("color: #d64545;")
+        self.logo_error_label.setWordWrap(True)
+        self.logo_error_label.hide()
+        logo_buttons = QHBoxLayout()
+        logo_buttons.addWidget(self.logo_upload_button)
+        logo_buttons.addWidget(self.logo_remove_button)
+        logo_buttons.addStretch(1)
+        logo_col = QVBoxLayout()
+        logo_col.setSpacing(6)
+        logo_col.addWidget(self.logo_preview)
+        logo_col.addLayout(logo_buttons)
+        logo_col.addWidget(self.logo_error_label)
+        logo_box = QWidget()
+        logo_box.setLayout(logo_col)
+        logo_col.setContentsMargins(0, 0, 0, 0)
+        self.data_folder_label = QLabel(str(projects_dir(create=False)))
+        self.data_folder_label.setWordWrap(True)
+        self.data_folder_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.open_data_folder_button = QPushButton("Open folder")
+        self.open_data_folder_button.setToolTip("Show your saved projects in the file manager")
+        self.open_data_folder_button.clicked.connect(self._open_data_folder)
+        folder_box = QWidget()
+        folder_row = QHBoxLayout(folder_box)
+        folder_row.setContentsMargins(0, 0, 0, 0)
+        folder_row.addWidget(self.data_folder_label, 1)
+        folder_row.addWidget(self.open_data_folder_button)
+
+        body = QWidget()
+        col = QVBoxLayout(body)
+        col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(12)
+        self.company_section = self._section("🏢 Company", [
+            ("Company name", self.company_edit),
+            ("Logo", logo_box),
+            ("Projects folder", folder_box),
+        ])
+        col.addWidget(self.company_section)
         col.addWidget(self._section("⚡ Costs", [
             ("Electricity rate", self.rate_spin),
             ("Default labor (per plate)", self.labor_spin),
@@ -84,14 +145,74 @@ class SettingsDialog(QDialog):
             ("Theme", self.theme_combo),
             ("Currency", self.currency_combo),
         ]))
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setWidget(body)
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        col.addWidget(self.buttons)
+        outer = QVBoxLayout(self)
+        outer.setSpacing(12)
+        outer.addWidget(self.scroll, 1)
+        outer.addWidget(self.buttons)
+        # Tall content scrolls; OK/Cancel stay visible below it.
+        self.scroll.setMinimumHeight(min(body.sizeHint().height() + 4, _MAX_BODY_HEIGHT))
 
         self._load(s)
+        self._show_logo(logo.read_logo())
+        if focus_company:
+            QTimer.singleShot(0, self._focus_company)
         self.currency_combo.currentIndexChanged.connect(self._on_currency)
+
+    def _focus_company(self) -> None:
+        self.scroll.ensureWidgetVisible(self.company_section)
+        self.company_edit.setFocus()
+
+    # -- logo -----------------------------------------------------------
+    def _show_logo(self, data: bytes | None) -> None:
+        img = QImage.fromData(data) if data else QImage()
+        if img.isNull():
+            self.logo_preview.setPixmap(QPixmap())
+            self.logo_preview.setText("No logo")
+        else:
+            if img.width() > _LOGO_BOX or img.height() > _LOGO_BOX:
+                img = img.scaled(_LOGO_BOX - 2, _LOGO_BOX - 2,
+                                 Qt.AspectRatioMode.KeepAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+            self.logo_preview.setPixmap(QPixmap.fromImage(img))
+        self.logo_remove_button.setEnabled(not img.isNull())
+
+    def _upload_logo(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose a logo", "", logo.image_filter())
+        if not path:
+            return
+        try:
+            data = logo.load_logo_image(path)
+        except logo.LogoError as e:
+            self.logo_error_label.setText(str(e))
+            self.logo_error_label.show()
+            return
+        self.logo_error_label.hide()
+        self._pending_logo = data
+        self._remove_logo = False
+        self._show_logo(data)
+
+    def _remove_logo_clicked(self) -> None:
+        self.logo_error_label.hide()
+        self._pending_logo = None
+        self._remove_logo = True
+        self._show_logo(None)
+
+    def _open_data_folder(self) -> None:
+        try:
+            folder = projects_dir()
+        except OSError:  # can't be created: the file manager reports it
+            folder = projects_dir(create=False)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     @staticmethod
     def _section(title: str, rows) -> QFrame:
@@ -120,6 +241,7 @@ class SettingsDialog(QDialog):
 
     # -- values ---------------------------------------------------------
     def _load(self, s) -> None:
+        self.company_edit.setText(s.company_name)
         self.rate_spin.setValue(s.electricity_rate)
         self.labor_spin.setValue(s.default_labor)
         self.packaging_spin.setValue(s.default_packaging)
@@ -145,6 +267,7 @@ class SettingsDialog(QDialog):
     def _values(self) -> dict:
         code, sym = self._currency
         return {
+            "company_name": self.company_edit.text().strip(),
             "electricity_rate": self.rate_spin.value(),
             "default_labor": self.labor_spin.value(),
             "default_packaging": self.packaging_spin.value(),
@@ -176,6 +299,10 @@ class SettingsDialog(QDialog):
         return {k: v for k, v in now.items() if v != self._initial[k]}
 
     def accept(self) -> None:
+        if self._pending_logo is not None:
+            logo.save_logo(self._pending_logo)
+        elif self._remove_logo:
+            logo.remove_logo()
         changed = self.changed_fields()
         if changed:
             self.state.update_settings(**changed)

@@ -78,12 +78,19 @@ class SummaryPanel(QFrame):
         self.export_button.setToolTip("Save this quote to an Excel report")
         self.export_button.setEnabled(False)
         col.addWidget(self.export_button)
+        self.invoice_button = QPushButton("🧾 Invoice")
+        self.invoice_button.setToolTip("Create a PDF invoice for this project")
+        self.invoice_button.setEnabled(False)
+        col.addWidget(self.invoice_button)
         from pcc.gui.export_flow import ExportFlow
         self.export_flow = ExportFlow(state, self)
         self.export_button.setMenu(self.export_flow.menu())
 
         state.quote_changed.connect(self.refresh)
         state.settings_changed.connect(self.refresh)
+        state.job_changed.connect(self.refresh)
+        state.project_opened.connect(self.refresh)
+        state.project_closed.connect(self.refresh)
         self.refresh()
 
     def _clear_plates(self) -> None:
@@ -100,6 +107,8 @@ class SummaryPanel(QFrame):
         self.error_label.setText((self.state.last_error or "") if q is None else "")
         self.error_label.setVisible(q is None and bool(self.state.last_error))
         self.export_button.setEnabled(q is not None)
+        self.invoice_button.setEnabled(
+            q is not None and bool(self.state.job.plates) and self.state.project is not None)
         if q is None:
             for v in self._values.values():
                 v.setText("—")

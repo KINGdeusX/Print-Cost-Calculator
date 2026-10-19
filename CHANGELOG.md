@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — 2026-10-19
+
+### Added
+- Projects: save, reopen, rename and delete quotes from a project list (stored in `Documents\Print Cost Calculator`).
+- Invoices: numbered PDF invoices (`INV-0001`...) created from a project, recorded with the project.
+- Company name and logo in preferences, shown on invoices.
+- Windows installer (`PrintCostCalculator-<version>-setup.exe`) with Start menu entry, optional desktop shortcut and a smoke-tested uninstall that keeps your data.
+
+### Changed
+- The start screen is now the project list; the printer selector moved into projects.
+
 ## 0.2.0 — 2026-10-17
 
 ### Added

@@ -97,6 +97,8 @@ class Settings:
     last_printer_id: str = ""
     last_export_path: str = ""
     window_geometry: str = ""  # base64
+    company_name: str = ""
+    next_invoice_number: int = 1
 
 
 @dataclass

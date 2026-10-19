@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 import pcc
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,11 +42,33 @@ def test_version_is_readable():
 
 
 def test_selftest_runs_unfrozen(qapp, capsys, monkeypatch):
-    from pcc.gui import app
+    from pcc.gui import app, invoice_pdf
 
+    rendered = []
+    real = invoice_pdf.render_invoice_pdf
+
+    def spy(path, **kw):
+        real(path, **kw)
+        rendered.append((Path(path).read_bytes()[:4], kw["logo_jpeg"][:2]))
+    monkeypatch.setattr(invoice_pdf, "render_invoice_pdf", spy)
     monkeypatch.setenv("PCC_SELFTEST", "1")
     assert app.main([]) == 0
     assert "selftest ok" in capsys.readouterr().out
+    assert rendered == [(b"%PDF", b"\xff\xd8")]  # a PDF with a real JPEG logo
+
+
+@pytest.mark.parametrize("broken", ["jpeg", "pdf"])
+def test_selftest_fails_without_image_plugins_or_pdf(qapp, capsys, monkeypatch, broken):
+    from pcc.gui import app, invoice_pdf, logo
+
+    if broken == "jpeg":
+        monkeypatch.setattr(logo, "load_logo_image",
+                            lambda p: (_ for _ in ()).throw(logo.LogoError("no jpeg")))
+    else:
+        monkeypatch.setattr(invoice_pdf, "render_invoice_pdf", lambda path, **kw: None)
+    monkeypatch.setenv("PCC_SELFTEST", "1")
+    assert app.main([]) == 1
+    assert "selftest FAILED" in capsys.readouterr().err
 
 
 def test_workflows_present():
@@ -85,3 +109,37 @@ def test_docker_runs_as_non_root():
         lines.index(next(ln for ln in lines if "chown" in ln))
     assert user > lines.index(next(ln for ln in lines if "useradd" in ln))
     assert user < lines.index(next(ln for ln in lines if ln.startswith("CMD")))
+
+
+def test_installer_script():
+    s = (ROOT / "packaging/installer.iss").read_text(encoding="utf-8")
+    for needle in ("8AE3DA70-F3C1-4E6E-BC60-6DC8A6238003", "{autopf}\\Print Cost Calculator", "AppVersion",
+                   "..\\dist\\PrintCostCalculator\\*", "PrintCostCalculator-{#AppVersion}-setup",
+                   "PrivilegesRequired=admin", "x64compatible", "unchecked", "skipifsilent"):
+        assert needle in s
+
+
+def test_release_builds_and_smoke_tests_installer():
+    s = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "-Installer" in s and "/VERYSILENT" in s and "unins000.exe" in s and "-setup.exe" in s
+
+
+def test_build_script_installer_switch():
+    s = (ROOT / "packaging/build_windows.ps1").read_text(encoding="utf-8")
+    assert "[switch]$Installer" in s and "ISCC" in s and "LASTEXITCODE" in s
+
+
+def test_changelog_030():
+    assert "## 0.3.0 — 2026-10-19" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+
+def test_readme_has_one_data_locations_table():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert readme.count("## 🗂️ Where your data lives") == 1
+    assert "Where settings live" not in readme
+    section = readme.split("## 🗂️ Where your data lives", 1)[1].split("\n## ", 1)[0]
+    for needle in ("Documents", "%APPDATA%\\PrintCostCalculator",
+                   "~/Library/Application Support/PrintCostCalculator",
+                   "~/.config/print-cost-calculator", "PCC_DATA_DIR", "PCC_CONFIG_DIR",
+                   "C:\\Program Files\\Print Cost Calculator"):
+        assert needle in section, needle

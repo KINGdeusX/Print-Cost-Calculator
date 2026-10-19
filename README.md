@@ -21,7 +21,8 @@
 
 Grab the latest build from the [Releases](https://github.com/KINGdeusX/Print-Cost-Calculator/releases) page.
 
-- **Windows:** download `PrintCostCalculator-<version>-windows-x64.zip`, unzip it, and run `PrintCostCalculator.exe`.
+- **Windows (installer):** download `PrintCostCalculator-<version>-setup.exe` and run it. Windows SmartScreen may warn about an unknown publisher: click **More info → Run anyway**.
+- **Windows (portable):** download `PrintCostCalculator-<version>-windows-x64.zip`, unzip it, and run `PrintCostCalculator.exe`.
 - **Linux (AppImage):** download `PrintCostCalculator-<version>-x86_64.AppImage`, then:
   ```bash
   chmod +x PrintCostCalculator-*-x86_64.AppImage
@@ -34,6 +35,14 @@ Grab the latest build from the [Releases](https://github.com/KINGdeusX/Print-Cos
   pcc-gui
   ```
   `pcc-gui --timing` prints startup times per stage (from launch to splash and window) to stderr. The Windows `.exe` is a windowed app with no console, so run it from source to see them.
+
+## 📁 Projects
+
+The start screen lists your projects. Drop a sliced `.3mf` (or click **➕ New** / **📂 Import .3mf**) to start one, then **💾 Save** it. Reopen, rename or delete projects from the list; deleted projects go to the Recycle Bin.
+
+## 🧾 Invoices
+
+Click **🧾 Invoice** inside a project to create a numbered PDF invoice (`INV-0001`, `INV-0002`, ...). Set your company name and logo in preferences. Invoices never show cost lines, margin, the hidden fee or filament prices.
 
 ## 💰 How pricing works
 
@@ -118,15 +127,15 @@ curl -F file=@benchy.3mf -F copies=2 -F customer="Ana" http://localhost:8765/api
 Public quotes never include cost lines, margin, the hidden fee or filament prices. A JSON quote needs at least one plate, and each public plate needs print time or filament (`400 invalid_request` otherwise). Interactive docs are at `/docs`.
 Generate clients for any language from `/openapi.json`.
 
-## 📁 Where settings live
+## 🗂️ Where your data lives
 
-| OS | Location |
-|---|---|
-| Windows | `%APPDATA%\PrintCostCalculator` |
-| macOS | `~/Library/Application Support/PrintCostCalculator` |
-| Linux | `$XDG_CONFIG_HOME/print-cost-calculator` (default `~/.config/print-cost-calculator`) |
+| What | Windows | macOS | Linux |
+|---|---|---|---|
+| Projects and invoices | `Documents\Print Cost Calculator` | `~/Documents/Print Cost Calculator` | `Print Cost Calculator` in your documents folder (`XDG_DOCUMENTS_DIR`, default `~/Documents`) |
+| Settings, profiles and logo | `%APPDATA%\PrintCostCalculator` | `~/Library/Application Support/PrintCostCalculator` | `$XDG_CONFIG_HOME/print-cost-calculator` (default `~/.config/print-cost-calculator`) |
+| Program (installer) | `C:\Program Files\Print Cost Calculator` | — | — |
 
-Set `PCC_CONFIG_DIR` to use a different folder.
+Uninstalling removes only the program and keeps your data. Set `PCC_DATA_DIR` to store projects and invoices elsewhere, and `PCC_CONFIG_DIR` for settings, profiles and logo.
 
 ## 🔨 Building from source
 
@@ -135,6 +144,7 @@ bash packaging/build_linux.sh          # tarball + AppImage in packaging/out
 ```
 ```powershell
 ./packaging/build_windows.ps1          # zip in packaging\out
+./packaging/build_windows.ps1 -Installer   # also builds the setup.exe (needs Inno Setup 6)
 ```
 
 Tagged pushes (`v*`) build everything on GitHub Actions and attach it to a release.

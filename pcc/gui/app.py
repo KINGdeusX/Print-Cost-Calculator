@@ -21,8 +21,60 @@ def _selftest() -> int:
     if app_icon().isNull():
         print("selftest FAILED: app icon is null", file=sys.stderr)
         return 1
+    problem = _selftest_logo_and_invoice()
+    if problem:
+        print(f"selftest FAILED: {problem}", file=sys.stderr)
+        return 1
     print("selftest ok")
     return 0
+
+
+def _selftest_logo_and_invoice() -> str | None:
+    """JPEG encode/decode (imageformat plugins) and PDF output work in the bundle."""
+    import datetime
+    import tempfile
+    from decimal import Decimal
+    from pathlib import Path
+
+    from PySide6.QtGui import QColor, QImage
+
+    from pcc.core.invoice import InvoiceLine
+    from pcc.gui import invoice_pdf, logo
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "logo.png"
+        img = QImage(8, 8, QImage.Format.Format_RGB32)
+        img.fill(QColor("orange"))
+        if not img.save(str(src), "PNG"):
+            return "could not write a PNG"
+        try:
+            jpeg = logo.load_logo_image(src)
+        except logo.LogoError as e:
+            return f"logo: {e}"
+        if QImage.fromData(jpeg).isNull():
+            return "logo: JPEG does not decode"
+        pdf = Path(tmp) / "invoice.pdf"
+        try:
+            invoice_pdf.render_invoice_pdf(
+                pdf, company_name="Selftest", logo_jpeg=jpeg, number="INV-0001",
+                date=datetime.date.today(), bill_to="",
+                lines=[InvoiceLine("Print", 1, Decimal("1.00"), Decimal("1.00"))],
+                currency_symbol="$")
+            ok = pdf.read_bytes()[:4] == b"%PDF"
+        except OSError:
+            ok = False
+        if not ok:
+            return "invoice PDF was not written"
+    return None
+
+
+def wire_session(app, window, state) -> None:
+    """Logoff/shutdown and quit must not lose a dirty project or pending settings."""
+    from PySide6.QtCore import Qt
+
+    # Qt asks for a direct connection: the session manager is only valid in the call
+    app.commitDataRequest.connect(window.commit_session, Qt.ConnectionType.DirectConnection)
+    app.aboutToQuit.connect(state.flush)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     from pcc.gui.main_window import MainWindow
 
     window = MainWindow(state)
+    wire_session(app, window, state)
     mark("window")
 
     window.show()

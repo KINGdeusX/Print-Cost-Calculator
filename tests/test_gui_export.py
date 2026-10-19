@@ -10,11 +10,14 @@ from pcc.gui.state import AppState
 
 def make(qtbot, with_plate=True):
     state = AppState(legacy_paths=[])
+    state.new_project()
     if with_plate:
         state.add_plate()
         state.update_plate(state.job.plates[0].id, hours=1.0)
+        state.save_project()  # clean project: closing the window must not prompt
     w = MainWindow(state)
     qtbot.addWidget(w)
+    w.show_editor()
     return state, w
 
 

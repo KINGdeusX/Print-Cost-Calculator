@@ -23,6 +23,7 @@ def _build(cls, d: dict[str, Any], **overrides):
 
 
 _POSITIVE = {(PrinterProfile, "watts")}
+_MIN_ONE = {(Settings, "next_invoice_number")}
 _CHOICES = {(Settings, "theme"): ("system", "light", "dark")}
 
 
@@ -32,7 +33,7 @@ def _valid(cls, name: str, ftype: str, v) -> bool:
         if isinstance(v, bool) or not isinstance(v, (int, float) if ftype == "float" else int):
             return False
         if ftype == "int":
-            return True
+            return v >= 1 if (cls, name) in _MIN_ONE else True
         return math.isfinite(v) and (v > 0 if (cls, name) in _POSITIVE else v >= 0)
     if ftype == "str":
         return isinstance(v, str) and v in _CHOICES.get((cls, name), (v,))

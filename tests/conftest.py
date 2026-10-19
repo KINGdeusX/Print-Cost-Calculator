@@ -14,6 +14,13 @@ def cfg_dir(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture(autouse=True)
+def data_dir(tmp_path, monkeypatch):
+    path = tmp_path / "data"
+    monkeypatch.setenv("PCC_DATA_DIR", str(path))
+    return path
+
+
 @pytest.fixture
 def settings():
     from pcc.core.models import Settings
@@ -88,3 +95,50 @@ def _qt_teardown_guard():
     if QApplication.instance() is not None:
         QApplication.processEvents()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture(autouse=True)
+def _no_blocking_save_prompt(monkeypatch):
+    """qtbot closes windows at teardown; a dirty project would raise a modal
+    'Save changes?' prompt and hang the run. Tests that care patch it again."""
+    if "PySide6.QtWidgets" not in sys.modules:
+        return
+    from PySide6.QtWidgets import QMessageBox
+
+    from pcc.gui.main_window import MainWindow
+
+    monkeypatch.setattr(MainWindow, "_ask_save",
+                        lambda self, name: QMessageBox.StandardButton.Discard)
+
+
+@pytest.fixture(autouse=True)
+def _keep_windows_alive(monkeypatch):
+    """pytest-qt holds widgets only weakly. A MainWindow in a reference cycle
+    can then be collected by the GC in the middle of the event processing that
+    pytest-qt runs right after the test body (e.g. while a child widget is
+    being polished): a use-after-free that aborts the run at random. Hold the
+    windows until teardown and delete them deterministically instead."""
+    if "PySide6.QtWidgets" not in sys.modules:
+        yield
+        return
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from pcc.gui.main_window import MainWindow
+
+    alive = []
+    real_init = MainWindow.__init__
+
+    def init(self, *a, **k):
+        real_init(self, *a, **k)
+        alive.append(self)
+
+    monkeypatch.setattr(MainWindow, "__init__", init)
+    yield
+    for w in alive:
+        try:
+            w.hide()
+            w.deleteLater()
+        except RuntimeError:  # already deleted
+            pass
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    alive.clear()
