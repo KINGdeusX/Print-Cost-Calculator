@@ -85,3 +85,25 @@ def test_docker_runs_as_non_root():
         lines.index(next(ln for ln in lines if "chown" in ln))
     assert user > lines.index(next(ln for ln in lines if "useradd" in ln))
     assert user < lines.index(next(ln for ln in lines if ln.startswith("CMD")))
+
+
+def test_installer_script():
+    s = (ROOT / "packaging/installer.iss").read_text(encoding="utf-8")
+    for needle in ("8AE3DA70-F3C1-4E6E-BC60-6DC8A6238003", "{autopf}\\Print Cost Calculator", "AppVersion",
+                   "..\\dist\\PrintCostCalculator\\*", "PrintCostCalculator-{#AppVersion}-setup",
+                   "PrivilegesRequired=admin", "x64compatible", "unchecked", "skipifsilent"):
+        assert needle in s
+
+
+def test_release_builds_and_smoke_tests_installer():
+    s = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "-Installer" in s and "/VERYSILENT" in s and "unins000.exe" in s and "-setup.exe" in s
+
+
+def test_build_script_installer_switch():
+    s = (ROOT / "packaging/build_windows.ps1").read_text(encoding="utf-8")
+    assert "[switch]$Installer" in s and "ISCC" in s and "LASTEXITCODE" in s
+
+
+def test_changelog_030():
+    assert "## 0.3.0 — 2026-10-19" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
