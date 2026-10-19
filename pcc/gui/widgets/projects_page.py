@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QFile, Qt, QSize, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QPixmap
+from PySide6.QtGui import QDesktopServices, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QMenu, QMessageBox, QPushButton, QToolButton, QVBoxLayout, QWidget,
@@ -55,7 +55,8 @@ class ProjectRow(QWidget):
 
     def __init__(self, handle: ProjectHandle, price: str, thumb_pixmap: QPixmap | None):
         super().__init__()
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        # Only the labels/thumbnail are mouse-transparent: clicks on them reach
+        # the list (selection, double-click), while the ⋯ button stays clickable.
         p = handle.project
         row = QHBoxLayout(self)
         row.setContentsMargins(10, 8, 6, 8)
@@ -117,6 +118,21 @@ def _edited(iso: str) -> str:
     return f"edited {d.day} {d:%b %Y}"
 
 
+class _ProjectList(QListWidget):
+    """F2 renames and Delete deletes the current row."""
+
+    rename_key = Signal()
+    delete_key = Signal()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_F2 and not event.modifiers():
+            self.rename_key.emit()
+        elif event.matches(QKeySequence.StandardKey.Delete):
+            self.delete_key.emit()
+        else:
+            super().keyPressEvent(event)
+
+
 class ProjectsPage(QWidget):
     open_requested = Signal(Path)
     warnings_found = Signal(list)
@@ -146,8 +162,9 @@ class ProjectsPage(QWidget):
         bar.addWidget(self.new_button)
         bar.addWidget(self.import_button)
         outer.addLayout(bar)
-        self.list_widget = QListWidget()
+        self.list_widget = _ProjectList()
         self.list_widget.setObjectName("projects_list")
+        self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.list_widget.setSpacing(2)
         self.empty_label = QLabel(EMPTY_TEXT)
@@ -158,6 +175,9 @@ class ProjectsPage(QWidget):
         outer.addWidget(self.empty_label, 1)
         self.search_edit.textChanged.connect(self._apply_filter)
         self.list_widget.itemActivated.connect(self._activated)
+        self.list_widget.customContextMenuRequested.connect(self._context_menu)
+        self.list_widget.rename_key.connect(lambda: self._on_current(self.rename_project))
+        self.list_widget.delete_key.connect(lambda: self._on_current(self.delete_project))
         state.projects_changed.connect(self.refresh)
         state.settings_changed.connect(self.refresh)
         state.catalog_changed.connect(self.refresh)
@@ -212,6 +232,22 @@ class ProjectsPage(QWidget):
         self.open_requested.emit(item.data(Qt.ItemDataRole.UserRole))
 
     # -- row actions --------------------------------------------------
+    def _context_menu(self, pos) -> None:
+        item = self.list_widget.itemAt(pos)
+        if item is None or item.isHidden():
+            return
+        menu = self._menu_for(item.data(Qt.ItemDataRole.UserRole), self.list_widget)
+        self._popup(menu, self.list_widget.viewport().mapToGlobal(pos))
+        menu.deleteLater()
+
+    def _popup(self, menu: QMenu, global_pos) -> None:
+        menu.exec(global_pos)  # seam: tests replace the blocking popup
+
+    def _on_current(self, action) -> None:
+        item = self.list_widget.currentItem()
+        if item is not None and not item.isHidden():
+            action(item.data(Qt.ItemDataRole.UserRole))
+
     def _menu_for(self, path: Path, parent: QWidget) -> QMenu:
         menu = QMenu(parent)
         menu.addAction("Rename…", lambda: self.rename_project(path))

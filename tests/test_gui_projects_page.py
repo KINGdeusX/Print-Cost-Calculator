@@ -1,0 +1,131 @@
+"""Projects list: row interaction (mouse, context menu, keys) and refresh policy."""
+from PySide6.QtCore import QFile, QTimer, Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
+
+from pcc.core.projects import list_projects, load_project
+from pcc.gui.main_window import MainWindow
+from pcc.gui.state import AppState
+from pcc.gui.widgets import projects_page as page_mod
+
+SB = QMessageBox.StandardButton
+MENU_TEXTS = ["Rename…", "Duplicate", "Show in folder", "", "Delete…"]
+
+
+def make(qtbot):
+    state = AppState(legacy_paths=[])
+    w = MainWindow(state)
+    qtbot.addWidget(w)
+    w.show()
+    return state, w
+
+
+def _one_project(qtbot, name="Row"):
+    state, w = make(qtbot)
+    path = state.new_project(name)
+    state.close_project()  # back on the list -> refreshed
+    assert QTest.qWaitForWindowExposed(w)
+    page = w.projects_page
+    item = page.list_widget.item(0)
+    return state, w, page, item, page.list_widget.itemWidget(item), path
+
+
+def test_more_button_is_hit_by_real_clicks(qtbot, cfg_dir, data_dir):
+    state, w, page, item, row, path = _one_project(qtbot)
+    btn = row.more_button
+    # the same hit-testing the window uses to deliver real mouse events
+    centre = btn.mapToGlobal(btn.rect().center())
+    assert w.childAt(w.mapFromGlobal(centre)) is btn
+    seen = []
+
+    def close_popup():
+        popup = QApplication.activePopupWidget()
+        seen.append([a.text() for a in popup.actions()] if popup else None)
+        if popup:
+            popup.close()
+
+    QTimer.singleShot(50, close_popup)
+    QTest.mouseClick(btn, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: bool(seen), timeout=2000)
+    assert seen == [MENU_TEXTS]
+
+
+def test_double_click_on_row_name_still_opens(qtbot, cfg_dir, data_dir):
+    state, w, page, item, row, path = _one_project(qtbot)
+    QTest.mouseClick(row.name_label, Qt.MouseButton.LeftButton)  # sets the pressed row
+    QTest.mouseDClick(row.name_label, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: w.stack.currentWidget() is w.editor_page, timeout=2000)
+    assert state.project_path == path
+
+
+def _fake_exec(pick, seen):
+    def fake(page, menu, pos):
+        acts = menu.actions()
+        seen.append([x.text() for x in acts])
+        act = next(x for x in acts if x.text() == pick)
+        act.trigger()
+        return act
+    return fake
+
+
+def test_right_click_context_menu_actions(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w, page, item, row, path = _one_project(qtbot, "Ctx")
+    lw = page.list_widget
+    assert lw.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu
+    seen = []
+    monkeypatch.setattr(page_mod.ProjectsPage, "_popup", _fake_exec("Rename…", seen))
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Renamed", True))
+    lw.customContextMenuRequested.emit(lw.visualItemRect(item).center())
+    assert seen == [MENU_TEXTS]
+    assert load_project(path).name == "Renamed"
+    # off-row right-click shows nothing
+    seen.clear()
+    lw.customContextMenuRequested.emit(lw.viewport().rect().bottomRight())
+    assert seen == []
+
+
+def test_context_menu_duplicate(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w, page, item, row, path = _one_project(qtbot, "Dup")
+    lw = page.list_widget
+    monkeypatch.setattr(page_mod.ProjectsPage, "_popup", _fake_exec("Duplicate", []))
+    lw.customContextMenuRequested.emit(lw.visualItemRect(item).center())
+    assert sorted(h.project.name for h in list_projects()[0]) == ["Dup", "Dup (copy)"]
+
+
+def test_f2_renames_current_row(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w, page, item, row, path = _one_project(qtbot, "Key")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("ByKey", True))
+    page.list_widget.setCurrentItem(item)
+    QTest.keyClick(page.list_widget, Qt.Key.Key_F2)
+    assert load_project(path).name == "ByKey"
+
+
+def test_delete_key_deletes_with_confirmation(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w, page, item, row, path = _one_project(qtbot, "Del")
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda parent, title, text, *a, **k: asked.append(text) or SB.Yes)
+    monkeypatch.setattr(QFile, "moveToTrash", staticmethod(
+        lambda p: __import__("shutil").rmtree(p) or True))
+    page.list_widget.setCurrentItem(item)
+    QTest.keyClick(page.list_widget, Qt.Key.Key_Delete)
+    assert asked == ["Delete 'Del'? It will be moved to the Recycle Bin."]
+    assert not path.exists() and page.list_widget.count() == 0
+
+
+def test_delete_key_declined_keeps(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w, page, item, row, path = _one_project(qtbot, "Stay")
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: SB.No)
+    page.list_widget.setCurrentItem(item)
+    QTest.keyClick(page.list_widget, Qt.Key.Key_Delete)
+    assert path.exists() and page.list_widget.count() == 1
+
+
+def test_keys_without_current_row_do_nothing(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w = make(qtbot)
+    called = []
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: called.append(1) or ("", False))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: called.append(2) or SB.No)
+    QTest.keyClick(w.projects_page.list_widget, Qt.Key.Key_F2)
+    QTest.keyClick(w.projects_page.list_widget, Qt.Key.Key_Delete)
+    assert called == []
