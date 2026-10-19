@@ -129,23 +129,13 @@ Generate clients for any language from `/openapi.json`.
 
 ## 🗂️ Where your data lives
 
-| What | Windows location |
-|---|---|
-| Program | `C:\Program Files\Print Cost Calculator` |
-| Projects and invoices | `Documents\Print Cost Calculator` |
-| Settings, profiles and logo | `%APPDATA%\PrintCostCalculator` |
+| What | Windows | macOS | Linux |
+|---|---|---|---|
+| Projects and invoices | `Documents\Print Cost Calculator` | `~/Documents/Print Cost Calculator` | `Print Cost Calculator` in your documents folder (`XDG_DOCUMENTS_DIR`, default `~/Documents`) |
+| Settings, profiles and logo | `%APPDATA%\PrintCostCalculator` | `~/Library/Application Support/PrintCostCalculator` | `$XDG_CONFIG_HOME/print-cost-calculator` (default `~/.config/print-cost-calculator`) |
+| Program (installer) | `C:\Program Files\Print Cost Calculator` | — | — |
 
-Uninstalling removes only the program and keeps your data. Set `PCC_DATA_DIR` to store projects and invoices elsewhere.
-
-## 📁 Where settings live
-
-| OS | Location |
-|---|---|
-| Windows | `%APPDATA%\PrintCostCalculator` |
-| macOS | `~/Library/Application Support/PrintCostCalculator` |
-| Linux | `$XDG_CONFIG_HOME/print-cost-calculator` (default `~/.config/print-cost-calculator`) |
-
-Set `PCC_CONFIG_DIR` to use a different folder.
+Uninstalling removes only the program and keeps your data. Set `PCC_DATA_DIR` to store projects and invoices elsewhere, and `PCC_CONFIG_DIR` for settings, profiles and logo.
 
 ## 🔨 Building from source
 

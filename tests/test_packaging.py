@@ -131,3 +131,15 @@ def test_build_script_installer_switch():
 
 def test_changelog_030():
     assert "## 0.3.0 — 2026-10-19" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+
+def test_readme_has_one_data_locations_table():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert readme.count("## 🗂️ Where your data lives") == 1
+    assert "Where settings live" not in readme
+    section = readme.split("## 🗂️ Where your data lives", 1)[1].split("\n## ", 1)[0]
+    for needle in ("Documents", "%APPDATA%\\PrintCostCalculator",
+                   "~/Library/Application Support/PrintCostCalculator",
+                   "~/.config/print-cost-calculator", "PCC_DATA_DIR", "PCC_CONFIG_DIR",
+                   "C:\\Program Files\\Print Cost Calculator"):
+        assert needle in section, needle

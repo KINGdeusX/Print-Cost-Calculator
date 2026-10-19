@@ -157,12 +157,10 @@ def _thumb_path(path: Path, plate_id: str) -> Path | None:
 
 def _write(path: Path, project: Project) -> None:
     """Write project.json and sync thumbs (write changed, remove stale)."""
-    keep: set[Path] = set()
     for plate in project.job.plates:
         tp = _thumb_path(path, plate.id)
         if tp is None:
             continue
-        keep.add(tp)
         if plate.thumbnail_png is not None:
             try:
                 if tp.read_bytes() == plate.thumbnail_png:
