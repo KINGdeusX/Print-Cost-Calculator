@@ -14,6 +14,13 @@ def cfg_dir(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture(autouse=True)
+def data_dir(tmp_path, monkeypatch):
+    path = tmp_path / "data"
+    monkeypatch.setenv("PCC_DATA_DIR", str(path))
+    return path
+
+
 @pytest.fixture
 def settings():
     from pcc.core.models import Settings

@@ -45,7 +45,7 @@ def _upload(c, **kw):
 
 
 def test_health(client):
-    assert client.get("/api/v1/health").json() == {"status": "ok", "version": "0.2.0"}
+    assert client.get("/api/v1/health").json() == {"status": "ok", "version": "0.3.0"}
 
 
 def test_filaments_public_has_no_price(client):
@@ -226,7 +226,7 @@ def test_openapi_lists_routes(client):
     spec = client.get("/openapi.json").json()
     assert "/api/v1/quote" in spec["paths"]
     assert spec["info"]["title"] == "Print Cost Calculator API"
-    assert spec["info"]["version"] == "0.2.0"
+    assert spec["info"]["version"] == "0.3.0"
 
 
 def test_export_xlsx(admin_client):

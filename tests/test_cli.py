@@ -85,7 +85,7 @@ def test_printers_and_filaments(cfg_dir, capsys):
 
 def test_version(capsys):
     assert main(["--version"]) == 0
-    assert capsys.readouterr().out.strip() == "pcc 0.2.0"
+    assert capsys.readouterr().out.strip() == "pcc 0.3.0"
 
 
 def test_serve_without_api(monkeypatch, capsys):
