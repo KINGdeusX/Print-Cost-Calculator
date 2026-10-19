@@ -341,3 +341,54 @@ def test_number_sanitized_in_filename(qtbot, cfg_dir, data_dir, number):
     assert not set('/\\:*?"') & set(path.name)
     assert state.project.invoices[-1].number == number
     assert invoice_exists(number)
+
+
+def test_invoice_exists_ignores_case(cfg_dir, data_dir):
+    (invoices_dir() / "INV-0001 - Ana.pdf").write_bytes(b"x")
+    (invoices_dir() / "inv-0002.PDF").write_bytes(b"x")
+    assert invoice_exists("inv-0001") and invoice_exists("Inv-0001")
+    assert invoice_exists("INV-0002")
+    assert not invoice_exists("inv-0003")
+
+
+def test_retry_after_failed_record_does_not_ask_about_own_file(qtbot, cfg_dir, data_dir, monkeypatch):
+    from pcc.core.projects import load_project
+    state, w = make(qtbot)
+    real = state.save_project
+    fail = [True]
+
+    def save(force=False):
+        if fail.pop() if fail else False:
+            raise OSError(28, "No space")
+        real(force=force)
+
+    monkeypatch.setattr(state, "save_project", save)
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda parent, title, text, *a, **k: asked.append(text) or No)
+    d = dialog(qtbot, w)
+    assert d.issue() is None  # PDF written, record save failed
+    pdf = invoices_dir() / "INV-0001 - Ana.pdf"
+    assert pdf.exists()
+    pdf.write_bytes(b"stale")
+    assert d.issue() == pdf  # no "already exists" about our own file
+    assert asked == []
+    assert pdf.read_bytes().startswith(b"%PDF")  # re-rendered
+    assert len(load_project(state.project_path).invoices) == 1
+    assert state.settings.next_invoice_number == 2
+
+
+def test_own_file_does_not_hide_other_existing_invoice(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w = make(qtbot)
+    monkeypatch.setattr(state, "save_project",
+                        lambda force=False: (_ for _ in ()).throw(OSError(28, "No space")))
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda parent, title, text, *a, **k: asked.append(text) or No)
+    d = dialog(qtbot, w)
+    assert d.issue() is None
+    (invoices_dir() / "INV-0001 - Someone else.pdf").write_bytes(b"x")
+    assert d.issue() is None
+    assert asked == ["Invoice INV-0001 already exists. Create anyway?"]

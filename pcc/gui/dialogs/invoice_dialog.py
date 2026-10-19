@@ -28,12 +28,18 @@ def invoice_file_path(number: str, bill_to: str, project_name: str) -> Path:
     return invoices_dir() / f"{safe_name(number)} - {safe_name(bill_to or project_name)}.pdf"
 
 
-def invoice_exists(number: str) -> bool:
-    d, stem = invoices_dir(), safe_name(number)
-    return any(
-        p.name == f"{stem}.pdf" or p.name.startswith(f"{stem} ")
-        for p in d.glob("*.pdf")
-    )
+def invoice_exists(number: str, ignore: set[Path] | frozenset = frozenset()) -> bool:
+    """A PDF for `number` is in the Invoices folder (case-insensitive, like
+    Windows); files in `ignore` do not count."""
+    d, stem = invoices_dir(), safe_name(number).casefold()
+    skip = {p.name.casefold() for p in ignore}
+    for p in d.iterdir():
+        name = p.name.casefold()
+        if not name.endswith(".pdf") or name in skip:
+            continue
+        if name == f"{stem}.pdf" or name.startswith(f"{stem} "):
+            return True
+    return False
 
 
 class InvoiceDialog(QDialog):
@@ -44,6 +50,7 @@ class InvoiceDialog(QDialog):
         self.setMinimumWidth(380)
         self.created_path: Path | None = None
         self.created_number: str | None = None
+        self._written: set[Path] = set()  # PDFs this dialog wrote (a retry may overwrite)
         self.number_edit = QLineEdit(default_invoice_number(state.settings))
         self.number_edit.setToolTip("Invoice number")
         self.date_edit = QDateEdit(QDate.currentDate())
@@ -84,7 +91,7 @@ class InvoiceDialog(QDialog):
         bill_to = self.bill_to_edit.text().strip()
         path = invoice_file_path(number, bill_to, state.project.name)
         # One prompt covers a reused number and an existing file of that name.
-        if invoice_exists(number) and QMessageBox.question(
+        if invoice_exists(number, self._written) and QMessageBox.question(
                 self, "Invoice exists", f"Invoice {number} already exists. Create anyway?",
         ) != QMessageBox.StandardButton.Yes:
             return None
@@ -92,6 +99,7 @@ class InvoiceDialog(QDialog):
         date = self.date_edit.date().toPython()
         if not self._render(path, number, date, bill_to, lines):
             return None
+        self._written.add(path)
         record = InvoiceRecord(
             number=number, date=date.isoformat(), bill_to=bill_to,
             total=float(invoice_total(lines)),
