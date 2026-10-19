@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from pcc.core.currency import format_money
+from pcc.core.dates import short_date
 from pcc.core.pricing import PricingError, compute_quote
 from pcc.core.projects import (
     THUMBS_DIR, ProjectError, ProjectHandle, duplicate_project, list_projects,
@@ -116,7 +117,7 @@ def _edited(iso: str) -> str:
         d = datetime.fromisoformat(iso)
     except ValueError:
         return ""
-    return f"edited {d.day} {d:%b %Y}"
+    return f"edited {short_date(d)}"
 
 
 class _ProjectList(QListWidget):

@@ -14,6 +14,7 @@ from PySide6.QtGui import (
 )
 
 from pcc.core.currency import format_money
+from pcc.core.dates import short_date
 from pcc.core.invoice import InvoiceLine, invoice_total
 
 ACCENT = "#F26B1D"
@@ -29,7 +30,7 @@ def _money(amount: Decimal, symbol: str) -> str:
 
 
 def _fmt_date(d: datetime.date) -> str:
-    return f"{d.day} {d:%b %Y}"
+    return short_date(d)
 
 
 def invoice_html(
