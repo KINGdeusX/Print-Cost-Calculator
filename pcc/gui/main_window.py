@@ -351,6 +351,8 @@ class MainWindow(QMainWindow):
         self.banner.hide()
         self.stack.setCurrentWidget(self.projects_page)
         self.projects_page.refresh()
+        if self._list_warnings:
+            self.show_warnings(self._list_warnings)
         self._update_title()
 
     def show_editor(self) -> None:
@@ -375,23 +377,38 @@ class MainWindow(QMainWindow):
             self.show_warnings(self._list_warnings)
 
     def go_back(self) -> None:
+        self.header.commit_name()
         if self.confirm_leave():
             self.state.close_project()  # project_closed -> show_projects
 
     def confirm_leave(self) -> bool:
         """Spec 6.3 prompt. True means the caller may drop the open project."""
+        self.header.commit_name()
         if not self.state.dirty or self.state.project is None:
             return True
-        choice = QMessageBox.question(
-            self, "Unsaved changes", f"Save changes to '{self.state.project.name}'?",
-            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save)
+        choice = self._ask_save(self.state.project.name)
         if choice == QMessageBox.StandardButton.Save:
             return self.save_current()
         return choice == QMessageBox.StandardButton.Discard
 
+    def _build_save_box(self, name: str) -> QMessageBox:
+        box = QMessageBox(QMessageBox.Icon.Question, "Unsaved changes",
+                          f"Save changes to '{name}'?",
+                          QMessageBox.StandardButton.Save
+                          | QMessageBox.StandardButton.Discard
+                          | QMessageBox.StandardButton.Cancel, self)
+        box.button(QMessageBox.StandardButton.Discard).setText("Don't Save")
+        box.setDefaultButton(QMessageBox.StandardButton.Save)
+        return box
+
+    def _ask_save(self, name: str) -> QMessageBox.StandardButton:
+        """The one place the Save / Don't Save / Cancel prompt is shown."""
+        box = self._build_save_box(name)
+        box.exec()
+        return box.standardButton(box.clickedButton())
+
     def save_current(self) -> bool:
+        self.header.commit_name()
         try:
             self.state.save_project()
             return True

@@ -105,5 +105,7 @@ def _no_blocking_save_prompt(monkeypatch):
         return
     from PySide6.QtWidgets import QMessageBox
 
-    monkeypatch.setattr(QMessageBox, "question",
-                        lambda *a, **k: QMessageBox.StandardButton.Discard)
+    from pcc.gui.main_window import MainWindow
+
+    monkeypatch.setattr(MainWindow, "_ask_save",
+                        lambda self, name: QMessageBox.StandardButton.Discard)

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QFile, QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QDropEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from pcc.core.currency import format_money
@@ -98,10 +99,10 @@ def test_back_prompt_save_dont_cancel(qtbot, cfg_dir, data_dir, monkeypatch, cho
     state, w = make(qtbot)
     path = _dirty_editor(state, w)
     asked = []
-    monkeypatch.setattr(QMessageBox, "question",
-                        lambda parent, title, text, *a, **k: asked.append(text) or choice)
+    monkeypatch.setattr(MainWindow, "_ask_save",
+                        lambda self, name: asked.append(name) or choice)
     w.header.back_button.click()
-    assert asked == ["Save changes to 'Proj'?"]
+    assert asked == ["Proj"]
     on_disk = len(load_project(path).job.plates)
     if choice == SB.Cancel:
         assert w.stack.currentWidget() is w.editor_page
@@ -121,7 +122,7 @@ def test_back_clean_does_not_prompt(qtbot, cfg_dir, data_dir, monkeypatch):
     state, w = make(qtbot)
     state.new_project("C")
     w.show_editor()
-    monkeypatch.setattr(QMessageBox, "question",
+    monkeypatch.setattr(MainWindow, "_ask_save",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked")))
     w.header.back_button.click()
     assert w.stack.currentWidget() is w.projects_page
@@ -130,11 +131,11 @@ def test_back_clean_does_not_prompt(qtbot, cfg_dir, data_dir, monkeypatch):
 def test_close_prompt_cancel_keeps_window(qtbot, cfg_dir, data_dir, monkeypatch):
     state, w = make(qtbot)
     _dirty_editor(state, w)
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: SB.Cancel)
+    monkeypatch.setattr(MainWindow, "_ask_save", lambda *a: SB.Cancel)
     ev = QCloseEvent()
     w.closeEvent(ev)
     assert not ev.isAccepted()
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: SB.Discard)
+    monkeypatch.setattr(MainWindow, "_ask_save", lambda *a: SB.Discard)
     ev = QCloseEvent()
     w.closeEvent(ev)
     assert ev.isAccepted()
@@ -143,10 +144,13 @@ def test_close_prompt_cancel_keeps_window(qtbot, cfg_dir, data_dir, monkeypatch)
 def test_ctrl_n_prompts_when_dirty(qtbot, cfg_dir, data_dir, monkeypatch):
     state, w = make(qtbot)
     first = _dirty_editor(state, w, "First")
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: SB.Cancel)
+    asked = []
+    monkeypatch.setattr(MainWindow, "_ask_save",
+                        lambda self, name: asked.append(self._build_save_box(name).text()) or SB.Cancel)
     w.new_project_flow()
+    assert asked == ["Save changes to 'First'?"]
     assert state.project_path == first and state.dirty
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: SB.Save)
+    monkeypatch.setattr(MainWindow, "_ask_save", lambda *a: SB.Save)
     w.new_project_flow()
     assert state.project_path != first and state.project.name == "Untitled project"
     assert len(load_project(first).job.plates) == 1
@@ -294,7 +298,7 @@ def test_dirty_indicator_and_save_button(qtbot, cfg_dir, data_dir):
     state.add_plate()
     assert h.save_button.isEnabled() and h.dirty_label.isVisible()
     assert h.dirty_label.text() == "● Unsaved changes"
-    assert w.windowTitle() == "D • — Print Cost Calculator" or w.windowTitle().startswith("D •")
+    assert w.windowTitle() == "D • — Print Cost Calculator"
     h.save_button.click()
     assert not state.dirty and not h.save_button.isEnabled()
     assert not h.dirty_label.isVisible()
@@ -329,7 +333,7 @@ def test_list_price_matches_quote(qtbot, cfg_dir, data_dir):
     page.refresh()
     row = page.list_widget.itemWidget(page.list_widget.item(0))
     assert expected in row.price_label.text()
-    assert row.plates_label.text() == "1 plates" or row.plates_label.text() == "1 plate"
+    assert row.plates_label.text() == "1 plate"
 
 
 def test_unpriceable_project_shows_dash(qtbot, cfg_dir, data_dir):
@@ -386,3 +390,123 @@ def test_pricing_error_shows_dash(qtbot, cfg_dir, data_dir, monkeypatch):
     w.projects_page.refresh()
     row = w.projects_page.list_widget.itemWidget(w.projects_page.list_widget.item(0))
     assert row.price_label.text() == "—"
+
+
+def test_pending_name_edit_is_not_lost(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w = make(qtbot)
+    state.new_project("Before")
+    w.show_editor()
+    path = state.project_path
+    w.header.name_edit.setFocus()
+    w.header.name_edit.selectAll()
+    QTest.keyClicks(w.header.name_edit, "After ")  # no editingFinished
+    assert state.dirty and w.header.name_edit.text() == "After "
+    asked = []
+    monkeypatch.setattr(MainWindow, "_ask_save", lambda self, name: asked.append(name) or SB.Save)
+    ev = QCloseEvent()
+    w.closeEvent(ev)
+    assert asked == ["After"] and ev.isAccepted()
+    assert load_project(path).name == "After"
+
+
+def test_save_prompt_buttons(qtbot, cfg_dir, data_dir):
+    state, w = make(qtbot)
+    box = w._build_save_box("X")
+    assert box.text() == "Save changes to 'X'?"
+    texts = [b.text().replace("&", "") for b in box.buttons()]
+    assert sorted(texts) == sorted(["Save", "Don't Save", "Cancel"])
+
+
+def _key(w, qtbot, key, mod=Qt.KeyboardModifier.NoModifier):
+    w.raise_()
+    w.activateWindow()
+    assert QTest.qWaitForWindowActive(w, 2000)  # shortcuts need an active window
+    QTest.keyClick(w, key, mod)
+
+
+def test_shortcut_ctrl_s_saves(qtbot, cfg_dir, data_dir):
+    state, w = make(qtbot)
+    path = _dirty_editor(state, w)
+    _key(w, qtbot, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier)
+    assert not state.dirty and len(load_project(path).job.plates) == 1
+
+
+def test_shortcut_ctrl_n_prompts_when_dirty(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w = make(qtbot)
+    first = _dirty_editor(state, w)
+    asked = []
+    monkeypatch.setattr(MainWindow, "_ask_save", lambda self, n: asked.append(n) or SB.Cancel)
+    _key(w, qtbot, Qt.Key.Key_N, Qt.KeyboardModifier.ControlModifier)
+    assert asked == ["Proj"] and state.project_path == first
+
+
+def test_shortcut_alt_left_goes_back(qtbot, cfg_dir, data_dir):
+    state, w = make(qtbot)
+    state.new_project("B")
+    w.show_editor()
+    _key(w, qtbot, Qt.Key.Key_Left, Qt.KeyboardModifier.AltModifier)
+    assert w.stack.currentWidget() is w.projects_page and state.project is None
+
+
+def test_shortcut_ctrl_o_per_page(qtbot, cfg_dir, data_dir, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+    state, w = make(qtbot)
+    f = _file(tmp_path)
+    monkeypatch.setattr(QFileDialog, "getOpenFileNames", lambda *a, **k: ([str(f)], ""))
+    _key(w, qtbot, Qt.Key.Key_O, Qt.KeyboardModifier.ControlModifier)  # list: new project
+    assert w.stack.currentWidget() is w.editor_page and state.project.name == "Benchy"
+    state.save_project()
+    before = len(state.job.plates)
+    _key(w, qtbot, Qt.Key.Key_O, Qt.KeyboardModifier.ControlModifier)  # editor: add plates
+    assert len(state.job.plates) == before + 2
+    assert len(list_projects()[0]) == 1
+
+
+def _failing_save(state, monkeypatch):
+    def boom(force=False):
+        raise PermissionError("disk locked")
+    monkeypatch.setattr(state, "save_project", boom)
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+
+
+def test_back_save_failure_stays_in_editor(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w = make(qtbot)
+    _dirty_editor(state, w)
+    _failing_save(state, monkeypatch)
+    monkeypatch.setattr(MainWindow, "_ask_save", lambda *a: SB.Save)
+    w.header.back_button.click()
+    assert w.stack.currentWidget() is w.editor_page and state.dirty and state.project
+
+
+def test_close_save_failure_keeps_window(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w = make(qtbot)
+    _dirty_editor(state, w)
+    _failing_save(state, monkeypatch)
+    monkeypatch.setattr(MainWindow, "_ask_save", lambda *a: SB.Save)
+    ev = QCloseEvent()
+    w.closeEvent(ev)
+    assert not ev.isAccepted() and state.dirty
+
+
+def test_close_save_success_closes_and_persists(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w = make(qtbot)
+    path = _dirty_editor(state, w)
+    monkeypatch.setattr(MainWindow, "_ask_save", lambda *a: SB.Save)
+    assert w.close()
+    assert not w.isVisible() and len(load_project(path).job.plates) == 1
+
+
+def test_dismissed_list_warning_does_not_reappear(qtbot, cfg_dir, data_dir):
+    state, w = make(qtbot)
+    bad = data_dir / "Projects" / "broken"
+    bad.mkdir(parents=True)
+    (bad / "project.json").write_text("{nope", encoding="utf-8")
+    w.show_projects()
+    assert w.banner.isVisible()
+    w.banner.dismiss_button.click()
+    state.update_settings(currency_code="USD", currency_symbol="$")
+    state.projects_changed.emit()
+    assert not w.banner.isVisible()
+    w.show_editor()
+    w.show_projects()  # explicit page entry shows it again
+    assert w.banner.isVisible()

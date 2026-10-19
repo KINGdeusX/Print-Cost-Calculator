@@ -53,21 +53,21 @@ def _first_thumbnail(handle: ProjectHandle) -> QPixmap | None:
 class ProjectRow(QWidget):
     """One list row; the menu button reports back through ``menu_requested``."""
 
-    def __init__(self, handle: ProjectHandle, price: str, sym_pixmap: QPixmap | None):
+    def __init__(self, handle: ProjectHandle, price: str, thumb_pixmap: QPixmap | None):
         super().__init__()
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         p = handle.project
         row = QHBoxLayout(self)
         row.setContentsMargins(10, 8, 6, 8)
         row.setSpacing(14)
-        self.has_thumbnail = sym_pixmap is not None
+        self.has_thumbnail = thumb_pixmap is not None
         self.thumb_label = QLabel()
         self.thumb_label.setProperty("thumb", True)
         self.thumb_label.setFixedSize(THUMB, THUMB)
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumb_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        if sym_pixmap is not None:
-            pm = sym_pixmap.scaled(
+        if thumb_pixmap is not None:
+            pm = thumb_pixmap.scaled(
                 THUMB * 2, THUMB * 2, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
             pm.setDevicePixelRatio(2)
@@ -125,6 +125,7 @@ class ProjectsPage(QWidget):
         super().__init__(parent)
         self.state = state
         self._names: dict[Path, str] = {}
+        self._last_warnings: list[str] | None = None
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
@@ -190,7 +191,9 @@ class ProjectsPage(QWidget):
             lw.setItemWidget(item, row)
             self._names[h.path] = h.project.name
         self._apply_filter()
-        self.warnings_found.emit(list(warnings))
+        if warnings != self._last_warnings:  # a dismissed banner stays dismissed
+            self._last_warnings = list(warnings)
+            self.warnings_found.emit(list(warnings))
 
     def _apply_filter(self, *_) -> None:
         needle = self.search_edit.text().strip().casefold()

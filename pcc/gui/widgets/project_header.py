@@ -33,7 +33,9 @@ class ProjectHeader(QFrame):
         self._row.addWidget(self.dirty_label)
         self._row.addStretch(1)
         self.back_button.clicked.connect(self.back_requested)
-        self.name_edit.editingFinished.connect(self._commit_name)
+        self._typing = False
+        self.name_edit.textEdited.connect(self._on_text_edited)
+        self.name_edit.editingFinished.connect(self.commit_name)
         state.dirty_changed.connect(self._sync_dirty)
         state.project_opened.connect(self.refresh)
         state.project_closed.connect(self.refresh)
@@ -46,7 +48,9 @@ class ProjectHeader(QFrame):
 
     def refresh(self) -> None:
         project = self.state.project
-        if project is not None and self.name_edit.text() != project.name:
+        if self._typing:
+            pass  # the user is mid-edit: never rewrite the field under the cursor
+        elif project is not None and self.name_edit.text() != project.name:
             self.name_edit.setText(project.name)
         elif project is None:
             self.name_edit.clear()
@@ -57,7 +61,20 @@ class ProjectHeader(QFrame):
         self.dirty_label.setVisible(dirty)
         self.save_button.setEnabled(dirty)
 
-    def _commit_name(self) -> None:
+    def _on_text_edited(self, text: str) -> None:
+        # Live rename: the project is dirty as soon as the name changes, so
+        # leaving with focus still in the field can never drop the edit.
+        project = self.state.project
+        text = text.strip()
+        if project is None or not text or text == project.name:
+            return
+        self._typing = True
+        try:
+            self.state.rename_current(text)
+        finally:
+            self._typing = False
+
+    def commit_name(self) -> None:
         project = self.state.project
         if project is None:
             return
