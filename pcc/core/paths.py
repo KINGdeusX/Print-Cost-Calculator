@@ -79,14 +79,16 @@ def data_root() -> Path:
     return documents_dir() / _APP_FOLDER
 
 
-def _sub(name: str) -> Path:
+def _sub(name: str, create: bool = True) -> Path:
     p = data_root() / name
-    p.mkdir(parents=True, exist_ok=True)
+    if create:
+        p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def projects_dir() -> Path:
-    return _sub("Projects")
+def projects_dir(create: bool = True) -> Path:
+    """The Projects folder; `create=False` only names it (for display)."""
+    return _sub("Projects", create)
 
 
 def invoices_dir() -> Path:

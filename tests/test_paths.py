@@ -26,3 +26,8 @@ def test_settings_new_fields_defaults_and_lenient():
     assert s.next_invoice_number == 1 and s.company_name == "Acme"
     assert settings_from_dict({"next_invoice_number": 0}).next_invoice_number == 1
     assert settings_from_dict({"next_invoice_number": 7}).next_invoice_number == 7
+
+
+def test_projects_dir_without_create(data_dir):
+    assert projects_dir(create=False) == data_dir / "Projects"
+    assert not (data_dir / "Projects").exists()

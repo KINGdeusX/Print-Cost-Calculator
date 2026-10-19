@@ -181,7 +181,8 @@ class ProjectsPage(QWidget):
         state.projects_changed.connect(self.refresh)
         state.settings_changed.connect(self.refresh)
         state.catalog_changed.connect(self.refresh)
-        self.refresh()
+        # No scan here: the owner calls refresh() when the page is shown, after
+        # it has connected warnings_found (else startup warnings are lost).
 
     # -- content ------------------------------------------------------
     def _price(self, handle: ProjectHandle) -> str:

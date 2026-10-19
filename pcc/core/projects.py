@@ -159,7 +159,10 @@ def _write(path: Path, project: Project) -> None:
 # -- public API ---------------------------------------------------------------
 
 def list_projects(root: Path | None = None) -> tuple[list[ProjectHandle], list[str]]:
-    root = root or projects_dir()
+    try:
+        root = root or projects_dir()
+    except OSError as e:  # read-only / missing drive: start anyway, say why
+        return [], [f"Projects folder unavailable: {e.strerror or e}"]
     handles: list[ProjectHandle] = []
     warnings: list[str] = []
     try:

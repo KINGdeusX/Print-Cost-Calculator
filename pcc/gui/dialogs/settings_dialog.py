@@ -106,7 +106,7 @@ class SettingsDialog(QDialog):
         logo_box = QWidget()
         logo_box.setLayout(logo_col)
         logo_col.setContentsMargins(0, 0, 0, 0)
-        self.data_folder_label = QLabel(str(projects_dir()))
+        self.data_folder_label = QLabel(str(projects_dir(create=False)))
         self.data_folder_label.setWordWrap(True)
         self.data_folder_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -208,7 +208,10 @@ class SettingsDialog(QDialog):
         self._show_logo(None)
 
     def _open_data_folder(self) -> None:
-        folder = projects_dir()
+        try:
+            folder = projects_dir()
+        except OSError:  # can't be created: the file manager reports it
+            folder = projects_dir(create=False)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     @staticmethod

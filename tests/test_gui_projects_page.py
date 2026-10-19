@@ -129,3 +129,51 @@ def test_keys_without_current_row_do_nothing(qtbot, cfg_dir, data_dir, monkeypat
     QTest.keyClick(w.projects_page.list_widget, Qt.Key.Key_F2)
     QTest.keyClick(w.projects_page.list_widget, Qt.Key.Key_Delete)
     assert called == []
+
+
+# -- data folder that cannot be created (item 2) -----------------------------
+import os  # noqa: E402
+import sys  # noqa: E402
+
+import pytest  # noqa: E402
+
+needs_posix_perms = pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="needs POSIX permissions and a non-root user")
+
+
+@pytest.fixture
+def readonly_data_dir(tmp_path, monkeypatch):
+    parent = tmp_path / "ro"
+    parent.mkdir()
+    parent.chmod(0o555)
+    monkeypatch.setenv("PCC_DATA_DIR", str(parent / "data"))
+    yield parent / "data"
+    parent.chmod(0o755)
+
+
+@needs_posix_perms
+def test_list_projects_reports_unavailable_folder(readonly_data_dir):
+    handles, warnings = list_projects()
+    assert handles == []
+    assert len(warnings) == 1 and warnings[0].startswith("Projects folder unavailable: ")
+
+
+@needs_posix_perms
+def test_app_starts_without_data_folder(qtbot, cfg_dir, readonly_data_dir, monkeypatch):
+    from pcc.gui.dialogs.settings_dialog import SettingsDialog
+
+    state, w = make(qtbot)
+    assert w.stack.currentWidget() is w.projects_page
+    assert w.banner.isVisible()
+    assert "Projects folder unavailable" in w.banner.label.text()
+    d = SettingsDialog(state, w)
+    qtbot.addWidget(d)
+    assert d.data_folder_label.text() == str(readonly_data_dir / "Projects")
+    opened = []
+    from pcc.gui.dialogs import settings_dialog
+    monkeypatch.setattr(settings_dialog.QDesktopServices, "openUrl",
+                        lambda url: opened.append(url) or True)
+    d.open_data_folder_button.click()  # must not raise
+    assert len(opened) == 1
+    assert not readonly_data_dir.exists()
