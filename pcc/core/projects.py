@@ -87,11 +87,41 @@ def _to_dict(p: Project) -> dict:
     }
 
 
+_INVOICE_STR_FIELDS = ("number", "date", "bill_to", "currency_symbol", "file")
+
+
+def _str(d: dict, key: str) -> str:
+    v = d[key]
+    if not isinstance(v, str):
+        raise ValueError(f"{key} must be a string")
+    return v
+
+
+def _timestamp(d: dict, key: str) -> str:
+    v = _str(d, key)
+    datetime.fromisoformat(v)  # ValueError if not a timestamp
+    return v
+
+
+def _invoice_from_dict(r) -> InvoiceRecord:
+    if not isinstance(r, dict):
+        raise ValueError("invoice must be an object")
+    total = r["total"]
+    if isinstance(total, bool) or not isinstance(total, (int, float)):
+        raise ValueError("invoice total must be a number")
+    # unknown keys are ignored: files written by newer versions still load
+    return InvoiceRecord(total=total, **{k: _str(r, k) for k in _INVOICE_STR_FIELDS})
+
+
 def _from_dict(d: dict) -> Project:
+    invoices = d.get("invoices", [])
+    if not isinstance(invoices, list):
+        raise ValueError("invoices must be a list")
     return Project(
-        id=d["id"], name=d["name"], created_at=d["created_at"],
-        updated_at=d["updated_at"], job=job_from_dict(d["job"]),
-        invoices=[InvoiceRecord(**r) for r in d.get("invoices", [])],
+        id=_str(d, "id"), name=_str(d, "name"),
+        created_at=_timestamp(d, "created_at"),
+        updated_at=_timestamp(d, "updated_at"), job=job_from_dict(d["job"]),
+        invoices=[_invoice_from_dict(r) for r in invoices],
         schema_version=d.get("schema_version", 1),
     )
 

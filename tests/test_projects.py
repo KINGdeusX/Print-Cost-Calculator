@@ -156,3 +156,43 @@ def test_create_never_overwrites_existing_folder(data_dir, job, monkeypatch):
     second = create_project("Same", job)
     assert second.path != first.path and second.project.id == "proj-fresh0001"
     assert load_project(first.path).id == first_id
+
+
+_INV = {"number": "INV-0001", "date": "2026-10-19", "bill_to": "Ana",
+        "total": 120.0, "currency_symbol": "₱", "file": "x.pdf"}
+
+
+def _rewrite(path, **changes):
+    import json
+    f = path / "project.json"
+    d = json.loads(f.read_text(encoding="utf-8"))
+    d.update(changes)
+    f.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+
+
+@pytest.mark.parametrize("changes", [
+    {"updated_at": 123}, {"updated_at": "yesterday"}, {"created_at": None},
+    {"created_at": "2026-13-45"}, {"name": 5}, {"id": ["a"]},
+    {"invoices": "x"}, {"invoices": [5]}, {"invoices": [{**_INV, "number": 1}]},
+    {"invoices": [{**_INV, "total": "12"}]}, {"invoices": [{**_INV, "total": True}]},
+    {"invoices": [{**_INV, "file": None}]}, {"invoices": [{**_INV, "date": 20261019}]},
+    {"invoices": [{k: v for k, v in _INV.items() if k != "bill_to"}]},
+])
+def test_wrong_typed_fields_skipped(data_dir, job, changes):
+    good = create_project("Good", job)
+    bad = create_project("Bad", job)
+    _rewrite(bad.path, **changes)
+    handles, warnings = list_projects()
+    assert [h.path for h in handles] == [good.path]
+    assert warnings == [f"{bad.path.name}: could not be read"]
+    with pytest.raises(ProjectError):
+        load_project(bad.path)
+
+
+def test_unknown_invoice_keys_ignored(data_dir, job):
+    h = create_project("Fwd", job)
+    _rewrite(h.path, invoices=[{**_INV, "total": 120, "paid": True, "notes": "x"}])
+    p = load_project(h.path)
+    assert len(p.invoices) == 1 and p.invoices[0].number == "INV-0001"
+    assert p.invoices[0].total == 120 and not hasattr(p.invoices[0], "paid")
+    assert list_projects()[1] == []
