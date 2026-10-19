@@ -252,3 +252,35 @@ def test_list_page_actions_rescan(qtbot, cfg_dir, data_dir, scans, monkeypatch):
     assert len(scans) == 1
     w.projects_page.duplicate_project(path)
     assert len(scans) == 2 and w.projects_page.list_widget.count() == 2
+
+
+def _pick_from_popup(qtbot, btn, text):
+    done = []
+
+    def pick():
+        popup = QApplication.activePopupWidget()
+        act = next(a for a in popup.actions() if a.text() == text)
+        act.trigger()
+        popup.close()
+        done.append(1)
+
+    QTimer.singleShot(50, pick)
+    QTest.mouseClick(btn, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: bool(done), timeout=2000)
+    QApplication.processEvents()
+
+
+def test_delete_from_row_button_menu_rebuilds_list_safely(qtbot, cfg_dir, data_dir, monkeypatch):
+    state, w, page, item, row, path = _one_project(qtbot, "Menu")
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: SB.Yes)
+    monkeypatch.setattr(QFile, "moveToTrash", staticmethod(
+        lambda p: __import__("shutil").rmtree(p) or True))
+    _pick_from_popup(qtbot, row.more_button, "Delete…")
+    qtbot.waitUntil(lambda: page.list_widget.count() == 0, timeout=2000)
+    assert not path.exists()
+
+
+def test_duplicate_from_row_button_menu(qtbot, cfg_dir, data_dir):
+    state, w, page, item, row, path = _one_project(qtbot, "Twice")
+    _pick_from_popup(qtbot, row.more_button, "Duplicate")
+    qtbot.waitUntil(lambda: page.list_widget.count() == 2, timeout=2000)
