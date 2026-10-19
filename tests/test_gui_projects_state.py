@@ -199,3 +199,48 @@ def test_save_oserror_keeps_dirty_and_project(qtbot, cfg_dir, data_dir, monkeypa
     with pytest.raises(OSError):
         s.save_project()
     assert s.dirty and s.project is project
+
+
+def _flaky_core_save(monkeypatch, failures, exc=PermissionError(13, "Locked")):
+    from pcc.gui import state as state_mod
+    real = state_mod.save_project
+    calls, sleeps = [], []
+
+    def save(*a, **k):
+        calls.append(1)
+        if len(calls) <= failures:
+            raise exc
+        return real(*a, **k)
+    monkeypatch.setattr(state_mod, "save_project", save)
+    monkeypatch.setattr(state_mod.time, "sleep", lambda s: sleeps.append(s))
+    return calls, sleeps
+
+
+def test_save_retries_permission_error(qtbot, cfg_dir, data_dir, monkeypatch):
+    state = AppState(legacy_paths=[])
+    path = state.new_project("Locked")
+    state.add_plate()
+    calls, sleeps = _flaky_core_save(monkeypatch, failures=2)
+    state.save_project()
+    assert len(calls) == 3 and sleeps == [0.1, 0.1]
+    assert not state.dirty and len(load_project(path).job.plates) == 1
+
+
+def test_save_gives_up_after_three_permission_errors(qtbot, cfg_dir, data_dir, monkeypatch):
+    state = AppState(legacy_paths=[])
+    state.new_project("Locked")
+    state.add_plate()
+    calls, sleeps = _flaky_core_save(monkeypatch, failures=99)
+    with pytest.raises(PermissionError):
+        state.save_project()
+    assert len(calls) == 3 and len(sleeps) == 2 and state.dirty
+
+
+def test_save_other_oserror_not_retried(qtbot, cfg_dir, data_dir, monkeypatch):
+    state = AppState(legacy_paths=[])
+    state.new_project("Full")
+    state.add_plate()
+    calls, sleeps = _flaky_core_save(monkeypatch, failures=99, exc=OSError(28, "No space"))
+    with pytest.raises(OSError):
+        state.save_project()
+    assert len(calls) == 1 and sleeps == [] and state.dirty

@@ -268,9 +268,16 @@ class AppState(QObject):
         if self.project is None or self.project_path is None:
             return
         current = replace(self.project, job=self.job)
-        self.project = save_project(
-            self.project_path, current,
-            None if force else self.project.updated_at)
+        expected = None if force else self.project.updated_at
+        # Windows AV/OneDrive can briefly lock the files: retry, then raise.
+        for attempt in range(SAVE_ATTEMPTS):
+            try:
+                self.project = save_project(self.project_path, current, expected)
+                break
+            except PermissionError:
+                if attempt + 1 == SAVE_ATTEMPTS:
+                    raise
+                time.sleep(SAVE_RETRY_DELAY_S)
         self._set_dirty(False)
         self.projects_changed.emit()
 
