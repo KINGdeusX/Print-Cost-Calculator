@@ -122,3 +122,87 @@ def test_new_job_still_works(qtbot, cfg_dir, data_dir):
     s.add_plate()
     s.new_job()
     assert s.job.plates == []
+
+
+def test_record_invoice_save_failure_keeps_record_and_dirty(qtbot, cfg_dir, data_dir, monkeypatch):
+    from pcc.gui import state as state_mod
+    s = AppState(legacy_paths=[])
+    path = s.new_project("I")
+    real = state_mod.save_project
+
+    def boom(*a, **k):
+        raise ProjectConflictError("x")
+
+    monkeypatch.setattr(state_mod, "save_project", boom)
+    rec = InvoiceRecord("INV-0001", "2026-10-19", "Ana", 100.0, "$", "f.pdf")
+    with pytest.raises(ProjectConflictError):
+        s.record_invoice(rec)
+    assert s.dirty and s.project.invoices == [rec]
+    monkeypatch.setattr(state_mod, "save_project", real)
+    s.save_project(force=True)
+    assert load_project(path).invoices == [rec] and not s.dirty
+
+
+def test_rename_strips_ignores_empty_and_signals(qtbot, cfg_dir, data_dir):
+    s = AppState(legacy_paths=[])
+    s.new_project("Old")
+    s.rename_current("   ")
+    assert s.project.name == "Old" and not s.dirty
+    with qtbot.waitSignal(s.project_renamed) as sig:
+        s.rename_current("  New  ")
+    assert sig.args == ["New"] and s.project.name == "New"
+
+
+def test_create_from_files_per_file_save_failure(qtbot, cfg_dir, data_dir, tmp_path, monkeypatch):
+    from pcc.gui import state as state_mod
+    real = state_mod.create_project
+    calls = []
+
+    def flaky(name, job, root=None):
+        calls.append(name)
+        if len(calls) == 1:
+            raise OSError("disk full")
+        return real(name, job, root)
+
+    monkeypatch.setattr(state_mod, "create_project", flaky)
+    a, b = tmp_path / "a.3mf", tmp_path / "b.3mf"
+    a.write_bytes(MULTI_PLATE_PROJECT)
+    b.write_bytes(MULTI_PLATE_PROJECT)
+    s = AppState(legacy_paths=[])
+    n = []
+    s.projects_changed.connect(lambda: n.append(1))
+    created, failures = s.create_projects_from_files([a, b])
+    assert len(created) == 1 and n == [1]
+    assert failures == [("a.3mf", "Could not save project: disk full")]
+
+
+def test_open_corrupt_project_leaves_state(qtbot, cfg_dir, data_dir):
+    from pcc.core.projects import ProjectError
+    s = AppState(legacy_paths=[])
+    good = s.new_project("G")
+    s.add_plate()
+    bad = s.new_project("B")
+    (bad / "project.json").write_text("{nope")
+    s.open_project(good)
+    s.add_plate()
+    project, job = s.project, s.job
+    with pytest.raises(ProjectError):
+        s.open_project(bad)
+    assert s.project is project and s.job is job and s.dirty
+    assert s.project_path == good
+
+
+def test_save_oserror_keeps_dirty_and_project(qtbot, cfg_dir, data_dir, monkeypatch):
+    from pcc.gui import state as state_mod
+    s = AppState(legacy_paths=[])
+    s.new_project("S")
+    s.add_plate()
+    project = s.project
+
+    def boom(*a, **k):
+        raise OSError("locked")
+
+    monkeypatch.setattr(state_mod, "save_project", boom)
+    with pytest.raises(OSError):
+        s.save_project()
+    assert s.dirty and s.project is project

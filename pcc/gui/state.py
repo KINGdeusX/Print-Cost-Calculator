@@ -15,7 +15,7 @@ from pcc.core.models import (
     Catalog, FilamentUse, Job, Plate, Settings, new_id, new_job,
 )
 from pcc.core.projects import (
-    InvoiceRecord, Project, create_project, load_project, save_project,
+    InvoiceRecord, Project, ProjectError, create_project, load_project, save_project,
 )
 from pcc.core.pricing import PricingError, Quote, compute_quote
 from pcc.core.storage import load_state, save_catalog, save_settings
@@ -41,6 +41,7 @@ class AppState(QObject):
     project_closed = Signal()
     dirty_changed = Signal(bool)
     projects_changed = Signal()
+    project_renamed = Signal(str)
 
     def __init__(self, directory: Path | None = None,
                  legacy_paths: list[Path] | None = None):
@@ -285,16 +286,19 @@ class AppState(QObject):
         self.project_closed.emit()
 
     def rename_current(self, name: str) -> None:
-        if self.project is None:
+        name = name.strip()
+        if self.project is None or not name:
             return
         self.project = replace(self.project, name=name)
         self._set_dirty(True)
+        self.project_renamed.emit(name)
 
     def record_invoice(self, record: InvoiceRecord) -> None:
         if self.project is None:
             return
         self.project = replace(self.project,
                                invoices=[*self.project.invoices, record])
+        self._set_dirty(True)  # stays dirty if the save below raises
         self.save_project()
 
     def create_projects_from_files(
@@ -321,7 +325,10 @@ class AppState(QObject):
                 if name.lower().endswith(suffix):
                     name = name[:-len(suffix)]
                     break
-            created.append(create_project(name or "Untitled project", job).path)
+            try:
+                created.append(create_project(name or "Untitled project", job).path)
+            except (OSError, ProjectError) as e:
+                failures.append((path.name, f"Could not save project: {e}"))
         if created:
             self.projects_changed.emit()
         return created, failures
