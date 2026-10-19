@@ -8,8 +8,10 @@ from decimal import Decimal
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import QMarginsF, QUrl
-from PySide6.QtGui import QImage, QPageLayout, QPageSize, QPdfWriter, QTextDocument
+from PySide6.QtCore import QMarginsF, QRectF, QSizeF, QUrl
+from PySide6.QtGui import (
+    QImage, QPageLayout, QPageSize, QPainter, QPdfWriter, QTextDocument,
+)
 
 from pcc.core.currency import format_money
 from pcc.core.invoice import InvoiceLine, invoice_total
@@ -17,7 +19,9 @@ from pcc.core.invoice import InvoiceLine, invoice_total
 ACCENT = "#F26B1D"
 _MUTED = "#777777"
 _RULE = "#DDDDDD"
-_LOGO_SCALE = 1.0  # logo px -> html px
+_DPI = 300
+_CSS_DPI = 96
+_LOGO_MM_PER_PX = 0.25  # a 150 px logo prints ~37.5 mm wide
 
 
 def _money(amount: Decimal, symbol: str) -> str:
@@ -91,6 +95,25 @@ def invoice_html(
     )
 
 
+def _paginate(doc: QTextDocument, writer: QPdfWriter) -> None:
+    """Paint the document page by page (QTextDocument.print_ adds a page number)."""
+    area = writer.pageLayout().paintRectPixels(writer.resolution())
+    page_w, page_h = float(area.width()), float(area.height())
+    doc.setPageSize(QSizeF(page_w, page_h))
+    pages = max(1, int(doc.pageCount()))
+    painter = QPainter(writer)
+    try:
+        for i in range(pages):
+            if i:
+                writer.newPage()
+            painter.save()
+            painter.translate(0, -i * page_h)
+            doc.drawContents(painter, QRectF(0, i * page_h, page_w, page_h))
+            painter.restore()
+    finally:
+        painter.end()
+
+
 def render_invoice_pdf(
     path: Path,
     *,
@@ -111,7 +134,9 @@ def render_invoice_pdf(
         bill_to=bill_to, lines=lines, currency_symbol=currency_symbol,
     )
     if has_logo:
-        w, h = round(logo.width() * _LOGO_SCALE), round(logo.height() * _LOGO_SCALE)
+        px_per_mm = _CSS_DPI / 25.4  # Qt scales <img> sizes from 96 dpi CSS px to the device
+        w = round(logo.width() * _LOGO_MM_PER_PX * px_per_mm)
+        h = round(logo.height() * _LOGO_MM_PER_PX * px_per_mm)
         html = html.replace('<img src="logo">', f'<img src="logo" width="{w}" height="{h}">', 1)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
     os.close(fd)
@@ -119,12 +144,13 @@ def render_invoice_pdf(
         writer = QPdfWriter(tmp_name)
         writer.setPageSize(QPageSize(QPageSize.A4))
         writer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout.Millimeter)
-        writer.setResolution(300)
+        writer.setResolution(_DPI)
         doc = QTextDocument()
         if has_logo:
             doc.addResource(QTextDocument.ImageResource, QUrl("logo"), logo)
+        doc.documentLayout().setPaintDevice(writer)
         doc.setHtml(html)
-        doc.print_(writer)
+        _paginate(doc, writer)
         del writer  # flush and close the file
         os.replace(tmp_name, path)
     except BaseException:

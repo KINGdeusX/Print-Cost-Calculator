@@ -4,8 +4,8 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QPoint, Qt, QTimer
-from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
+from PySide6.QtCore import QByteArray, QPoint, QUrl, Qt, QTimer
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFrame, QHBoxLayout, QInputDialog, QLabel,
     QFileDialog, QMainWindow, QMessageBox, QScrollArea, QSplitter, QStackedWidget,
@@ -92,6 +92,7 @@ class MainWindow(QMainWindow):
         self.plates_view.import_requested.connect(self.import_dialog)
         self.header.back_requested.connect(self.go_back)
         self.header.save_button.clicked.connect(self.save_current)
+        self.summary.invoice_button.clicked.connect(self.open_invoice_dialog)
         self.projects_page.new_button.clicked.connect(self.new_project_flow)
         self.projects_page.import_button.clicked.connect(self.import_projects_dialog)
         self.projects_page.open_requested.connect(self.open_project)
@@ -109,6 +110,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence.StandardKey.Save, self, activated=self._ctrl_s)
         QShortcut(QKeySequence("Alt+Left"), self, activated=self._alt_left)
         QShortcut(QKeySequence("Ctrl+E"), self, activated=self._ctrl_e)
+        QShortcut(QKeySequence("Ctrl+I"), self, activated=self._ctrl_i)
         QShortcut(QKeySequence("Ctrl+,"), self, activated=self.open_settings)
 
         self._refresh_printers()
@@ -286,6 +288,26 @@ class MainWindow(QMainWindow):
         if SettingsDialog(self.state, self).exec():
             apply_theme(QApplication.instance(), self.state.settings.theme)
             self._refresh_theme_button()
+
+    def open_invoice_dialog(self) -> None:
+        from pcc.gui.dialogs.invoice_dialog import InvoiceDialog
+        from pcc.gui.dialogs.settings_dialog import SettingsDialog
+        if not self.summary.invoice_button.isEnabled():
+            return
+        if not self.state.settings.company_name.strip():
+            if not SettingsDialog(self.state, self, focus_company=True).exec():
+                return
+            if not self.state.settings.company_name.strip():
+                return
+        dlg = InvoiceDialog(self.state, self)
+        if not dlg.exec() or dlg.created_path is None:
+            return
+        path = dlg.created_path
+        self.toast.show_toast(
+            f"🧾 Saved {dlg.number_edit.text().strip()}",
+            [("Open", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))),
+             ("Show in folder", lambda: QDesktopServices.openUrl(
+                 QUrl.fromLocalFile(str(path.parent))))])
 
     # -- theme --------------------------------------------------------
     def _cycle_theme(self) -> None:
@@ -495,6 +517,10 @@ class MainWindow(QMainWindow):
     def _ctrl_e(self) -> None:
         if self._in_editor():
             self.summary.export_flow.quick_export()
+
+    def _ctrl_i(self) -> None:
+        if self._in_editor():
+            self.open_invoice_dialog()
 
     # -- drag and drop --------------------------------------------------
     @staticmethod

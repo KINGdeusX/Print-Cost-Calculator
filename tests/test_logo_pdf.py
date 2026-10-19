@@ -134,3 +134,54 @@ def test_render_pdf_corrupt_logo_does_not_crash(tmp_path, qapp):
         date=date(2026, 10, 19), bill_to="", lines=[_line()], currency_symbol="₱",
     )
     assert p.read_bytes()[:4] == b"%PDF"
+
+
+def _tool(name):
+    import shutil
+    path = shutil.which(name)
+    if path is None:
+        pytest.skip(f"{name} not available")
+    return path
+
+
+def _render(tmp_path, lines, logo=None):
+    p = tmp_path / "inv.pdf"
+    render_invoice_pdf(
+        p, company_name="Acme", logo_jpeg=logo, number="INV-0001",
+        date=date(2026, 10, 19), bill_to="Ana", lines=lines, currency_symbol="₱",
+    )
+    return p
+
+
+def test_one_page_pdf_has_no_page_number_footer(tmp_path, qapp):
+    import subprocess
+    p = _render(tmp_path, [_line()])
+    pages = subprocess.run([_tool("pdfinfo"), str(p)], capture_output=True, text=True).stdout
+    assert next(x for x in pages.splitlines() if x.startswith("Pages:")).split()[1] == "1"
+    text = subprocess.run([_tool("pdftotext"), "-layout", str(p), "-"],
+                          capture_output=True, text=True).stdout
+    assert "Thank you for your business!" in text
+    lone = [ln.strip() for ln in text.splitlines() if ln.strip() in {"1", "2"}]
+    assert lone == [], "stray page number"
+
+
+def test_long_invoice_paginates_manually(tmp_path, qapp):
+    import subprocess
+    lines = [_line(f"Part {i}") for i in range(80)]
+    p = _render(tmp_path, lines)
+    out = subprocess.run([_tool("pdfinfo"), str(p)], capture_output=True, text=True).stdout
+    n = int(next(x for x in out.splitlines() if x.startswith("Pages:")).split()[1])
+    assert n >= 2
+    text = subprocess.run([_tool("pdftotext"), str(p), "-"], capture_output=True, text=True).stdout
+    assert "Part 0" in text and "Part 79" in text and "Thank you for your business!" in text
+
+
+def test_logo_prints_at_sensible_physical_size(tmp_path, qapp):
+    import subprocess
+    p = _render(tmp_path, [_line()], logo=_jpeg(150, 150))
+    out = subprocess.run([_tool("pdfimages"), "-list", str(p)],
+                         capture_output=True, text=True).stdout.splitlines()
+    row = out[2].split()  # page num type width height color comp bpc enc interp object ID x-ppi y-ppi
+    assert (row[3], row[4]) == ("150", "150")
+    mm = 150 / float(row[12]) * 25.4
+    assert 35 <= mm <= 40, mm
