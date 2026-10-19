@@ -61,6 +61,19 @@ def test_no_packaging_all_multi_copy_gets_rounding_line(job, settings, catalog):
     raise AssertionError("no Rounding line produced")
 
 
+def test_rounding_line_is_signed_and_bounded(job, settings, catalog):
+    for hours in [x / 10 for x in range(10, 200)]:
+        j = replace(job, packaging=0.0, plates=[replace(job.plates[0], copies=3, hours=hours)])
+        q = compute_quote(j, settings, catalog)
+        lines = build_invoice_lines(q)
+        rounding = [l for l in lines if l.description == "Rounding"]
+        if rounding and rounding[0].amount < 0:
+            _check(lines, q)
+            assert abs(rounding[0].amount) < Decimal("0.01") * 3
+            return
+    raise AssertionError("no negative Rounding line found")
+
+
 def test_remainder_prefers_qty1_plate(job, settings, catalog):
     j = replace(job, packaging=0.0, plates=[replace(job.plates[0], copies=1)])
     q = compute_quote(j, settings, catalog)
@@ -84,4 +97,8 @@ def test_invariants_random(job, settings, catalog):
         s = replace(settings, rounding_step=rng.choice([0.0, 1.0, 5.0, 10.0]),
                     margin_pct=rng.choice([0.0, 30.0, 50.0]))
         q = compute_quote(j, s, catalog)
-        _check(build_invoice_lines(q), q)
+        lines = build_invoice_lines(q)
+        _check(lines, q)
+        for l in lines:
+            if l.description == "Rounding":
+                assert abs(l.amount) < Decimal("0.01") * sum(p.copies for p in plates)
